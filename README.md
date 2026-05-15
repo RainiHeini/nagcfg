@@ -1,37 +1,37 @@
 # NagCFG
 
-Web-basierter Konfigurationseditor für Nagios Core 4.x. Ermöglicht das Bearbeiten, Erstellen und Löschen von Nagios-Objekten direkt im Browser.
+Web-based configuration editor for Nagios Core 4.x. Edit, create and delete Nagios objects directly in the browser.
 
 ## Features
 
-- Dashboard mit Übersicht aller Objekttypen und deren Anzahl
-- Listen- und Detailansicht für alle Nagios-Objekttypen (Hosts, Services, Hostgroups, Contacts, Commands, Timeperiods, etc.)
-- Inline-Editierung mit Autovervollständigung für Direktiven und Referenzen
-- Erstellen, Kopieren und Löschen von Objekten
-- Automatische Validierung (`nagios -v`) und Reload nach jeder Änderung
-- Kaskadierende Umbenennung: Beim Ändern eines Namens werden alle Referenzen automatisch aktualisiert
-- Duplikat-Erkennung beim Umbenennen
-- Atomare Schreiboperationen mit automatischem Backup
-- Einbindung als action_url in Nagios (direkter Link vom Nagios-Webinterface zum Editor)
-- Readonly-Modus über Konfiguration
-- CSRF-Schutz
+- Dashboard with overview of all object types and counts
+- List and detail views for all Nagios object types (hosts, services, hostgroups, contacts, commands, timeperiods, etc.)
+- Inline editing with autocompletion for directives and cross-references
+- Create, copy and delete objects
+- Automatic validation (`nagios -v`) and reload after every change
+- Cascading rename: changing a name automatically updates all references across all config files
+- Duplicate detection on rename
+- Atomic writes with automatic backup
+- action_url integration: adds a clickable icon to every host and service in the Nagios web interface that links directly to the editor
+- Read-only mode via configuration
+- CSRF protection
 
-## Voraussetzungen
+## Requirements
 
 - Nagios Core 4.x
-- Apache 2.4 mit mod_php
-- PHP 8.0 oder neuer
-- Debian/Ubuntu (andere Distributionen mit Anpassungen möglich)
+- Apache 2.4 with mod_php
+- PHP 8.0 or newer
+- Debian/Ubuntu (other distributions may work with minor adjustments)
 
 ## Installation
 
-### 1. Dateien kopieren
+### 1. Copy files
 
-Die Dateien in ein beliebiges Verzeichnis kopieren, das vom Webserver erreichbar ist. In `config.php` die Pfade auf die eigene Nagios-Installation anpassen.
+Copy the files to any directory accessible by the web server. Adjust the paths in `config.php` to match your Nagios installation.
 
-### 2. Berechtigungen setzen
+### 2. Set permissions
 
-Der Webserver-Benutzer (`www-data`) muss in die Gruppen `nagios` und `nagcmd` aufgenommen werden:
+The web server user (`www-data`) must be added to the `nagios` and `nagcmd` groups:
 
 ```bash
 usermod -aG nagios www-data
@@ -39,7 +39,7 @@ usermod -aG nagcmd www-data
 systemctl restart apache2
 ```
 
-Die Nagios-Konfigurationsverzeichnisse und -dateien müssen für die Gruppe beschreibbar sein:
+The Nagios configuration directories and files must be group-writable:
 
 ```bash
 mkdir -p /usr/local/nagios/etc/backup
@@ -48,13 +48,13 @@ chmod 775 /usr/local/nagios/etc/objects/ /usr/local/nagios/etc/backup/
 chmod 664 /usr/local/nagios/etc/objects/*.cfg
 ```
 
-### 3. Apache konfigurieren
+### 3. Configure Apache
 
-Einen Alias auf das NagCFG-Verzeichnis einrichten und `AllowOverride All` setzen, damit die `.htaccess`-Authentifizierung greift. Den Pfad zur `htpasswd`-Datei in `.htaccess` bei Bedarf anpassen.
+Set up an alias pointing to the NagCFG directory and enable `AllowOverride All` so the `.htaccess` authentication takes effect. Adjust the htpasswd path in `.htaccess` if needed.
 
-### 4. Authentifizierung
+### 4. Authentication
 
-Die mitgelieferte `.htaccess` nutzt die Nagios-eigene htpasswd-Datei:
+The included `.htaccess` uses the Nagios htpasswd file:
 
 ```apache
 AuthName "NagCFG"
@@ -63,34 +63,33 @@ AuthUserFile /usr/local/nagios/etc/htpasswd.users
 Require valid-user
 ```
 
-Falls die htpasswd-Datei an einem anderen Ort liegt, den Pfad in `.htaccess` anpassen.
+## action_url integration
 
-## action_url-Integration
+The settings page (`/nagcfg/?view=settings`) lets you activate the action_url integration. This creates two invisible templates (`nagcfg-host` and `nagcfg-service`) and applies them to all existing host and service templates. A gear icon then appears next to every host and service in the Nagios web interface, linking directly to the editor for that object.
 
-Über die Einstellungsseite (`/nagcfg/?view=settings`) kann die action_url-Integration aktiviert werden. Dabei werden zwei unsichtbare Templates (`nagcfg-host` und `nagcfg-service`) erstellt und auf alle bestehenden Host- und Service-Templates angewandt. Im Nagios-Webinterface erscheint dann bei jedem Host und Service ein Icon, das direkt zum Editor verlinkt.
+The integration can be uninstalled from the same settings page.
 
-Die Integration kann über dieselbe Einstellungsseite wieder deinstalliert werden.
+## Files
 
-## Dateien
-
-| Datei | Beschreibung |
+| File | Description |
 |---|---|
-| `index.php` | Hauptanwendung (Routing, POST-Handler, Views) |
-| `NagiosParser.php` | Parser für Nagios-Konfigurationsdateien |
-| `NagiosWriter.php` | Schreiboperationen (Save, Delete, Append, Reload) |
-| `config.php` | Konfiguration (Pfade, Optionen) |
+| `index.php` | Main application (routing, POST handlers, views) |
+| `NagiosParser.php` | Parser for Nagios configuration files |
+| `NagiosWriter.php` | Write operations (save, delete, append, reload) |
+| `config.php` | Configuration (paths, options) |
 | `style.css` | Stylesheet |
-| `script.js` | Client-seitiges JavaScript |
-| `action-gear.gif` | Icon für die action_url-Integration |
-| `.htaccess` | Apache-Authentifizierung |
+| `script.js` | Client-side JavaScript |
+| `action-gear.gif` | Icon for the action_url integration |
+| `.htaccess` | Apache authentication |
 
-## Hinweise
+## Notes
 
-- HTTPS wird dringend empfohlen (Basic Auth überträgt Zugangsdaten nur Base64-kodiert)
-- Bei jeder Schreiboperation wird automatisch ein Backup der betroffenen Datei erstellt
-- Die Anzahl der Backups pro Datei ist über `max_backups` in `config.php` konfigurierbar
-- Mit `'readonly' => true` in `config.php` kann der Schreibzugriff komplett deaktiviert werden
+- This project is an independent tool and is not affiliated with or endorsed by Nagios Enterprises
+- NagCFG is intended for use in trusted, internal networks only. It relies on HTTP Basic Authentication and should not be exposed to the public internet without additional security measures (HTTPS, VPN, firewall)
+- Every write operation automatically creates a backup of the affected file
+- The number of backups per file is configurable via `max_backups` in `config.php`
+- Set `'readonly' => true` in `config.php` to disable all write access
 
-## Lizenz
+## License
 
 MIT

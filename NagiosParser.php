@@ -50,13 +50,13 @@ class NagiosParser
         $nagiosCfg = $this->config['nagios_cfg'];
 
         if (!is_readable($nagiosCfg)) {
-            $this->errors[] = "nagios.cfg nicht lesbar: $nagiosCfg";
+            $this->errors[] = "nagios.cfg not readable: $nagiosCfg";
             return [];
         }
 
         $lines = file($nagiosCfg, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         if ($lines === false) {
-            $this->errors[] = "nagios.cfg konnte nicht gelesen werden: $nagiosCfg";
+            $this->errors[] = "Could not read nagios.cfg: $nagiosCfg";
             return [];
         }
 
@@ -73,7 +73,7 @@ class NagiosParser
                 if (is_file($path)) {
                     $files[] = $path;
                 } else {
-                    $this->errors[] = "cfg_file nicht gefunden: $path";
+                    $this->errors[] = "cfg_file not found: $path";
                 }
             } elseif (preg_match('/^cfg_dir\s*=\s*(.+)$/', $line, $m)) {
                 $dir = trim($m[1]);
@@ -87,7 +87,7 @@ class NagiosParser
                         }
                     }
                 } else {
-                    $this->errors[] = "cfg_dir nicht gefunden: $dir";
+                    $this->errors[] = "cfg_dir not found: $dir";
                 }
             }
         }
@@ -101,13 +101,13 @@ class NagiosParser
     private function parseFile(string $filepath): void
     {
         if (!is_readable($filepath)) {
-            $this->errors[] = "Datei nicht lesbar: $filepath";
+            $this->errors[] = "File not readable: $filepath";
             return;
         }
 
         $lines = file($filepath);
         if ($lines === false) {
-            $this->errors[] = "Datei konnte nicht gelesen werden: $filepath";
+            $this->errors[] = "Could not read file: $filepath";
             return;
         }
 
@@ -145,7 +145,7 @@ class NagiosParser
                         $blockLines = [$line];
                         $directives = [];
                     } else {
-                        $this->errors[] = "$filepath:$lineNum: Unbekannter Objekttyp '$type'";
+                        $this->errors[] = "$filepath:$lineNum: Unknown object type '$type'";
                         $commentBuffer = [];
                     }
                     continue;

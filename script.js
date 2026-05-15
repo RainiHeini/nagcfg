@@ -101,7 +101,7 @@
     document.addEventListener('click', function (e) {
         if (e.target.classList.contains('btn-remove')) {
             var row = e.target.closest('tr');
-            if (row && confirm('Direktive entfernen?')) {
+            if (row && confirm('Remove directive?')) {
                 row.remove();
             }
         }
@@ -133,7 +133,7 @@
                 var removeBtn = document.createElement('button');
                 removeBtn.type = 'button';
                 removeBtn.className = 'btn-remove';
-                removeBtn.title = 'Entfernen';
+                removeBtn.title = 'Remove';
                 removeBtn.textContent = '\u00D7';
                 btnCell.parentNode.replaceChild(removeBtn, btnCell);
             }
@@ -145,9 +145,9 @@
             var newRow = document.createElement('tr');
             newRow.className = 'new-directive-row';
             newRow.innerHTML =
-                '<td><input type="text" name="keys[]" value="" class="input-key" placeholder="Neue Direktive" list="dl-directives"></td>' +
-                '<td><input type="text" name="values[]" value="" class="input-value" placeholder="Wert"></td>' +
-                '<td><button type="button" class="btn-add" title="Weitere hinzufügen">+</button></td>';
+                '<td><input type="text" name="keys[]" value="" class="input-key" placeholder="New directive" list="dl-directives"></td>' +
+                '<td><input type="text" name="values[]" value="" class="input-value" placeholder="Value"></td>' +
+                '<td><button type="button" class="btn-add" title="Add another">+</button></td>';
             tbodyEl.appendChild(newRow);
         }
     });

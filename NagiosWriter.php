@@ -23,17 +23,17 @@ class NagiosWriter
         int    $expectedMtime
     ): array {
         if ($this->config['readonly'] ?? false) {
-            return ['success' => false, 'message' => 'Read-Only-Modus aktiv.'];
+            return ['success' => false, 'message' => 'Read-only mode active.'];
         }
 
         if (!is_writable($file)) {
-            return ['success' => false, 'message' => 'Datei nicht schreibbar: ' . $file];
+            return ['success' => false, 'message' => 'File not writable:' . $file];
         }
 
         // Race condition check
         clearstatcache(true, $file);
         if (filemtime($file) !== $expectedMtime) {
-            return ['success' => false, 'message' => 'Die Datei wurde zwischenzeitlich geändert. Bitte Seite neu laden und erneut bearbeiten.'];
+            return ['success' => false, 'message' => 'File was modified externally. Please reload the page and try again.'];
         }
 
         // Backup
@@ -45,7 +45,7 @@ class NagiosWriter
         // Read file
         $lines = file($file);
         if ($lines === false) {
-            return ['success' => false, 'message' => 'Datei konnte nicht gelesen werden.'];
+            return ['success' => false, 'message' => 'Could not read file.'];
         }
 
         // Build new block
@@ -69,7 +69,7 @@ class NagiosWriter
     public function appendObject(string $file, string $type, array $directives): array
     {
         if ($this->config['readonly'] ?? false) {
-            return ['success' => false, 'message' => 'Read-Only-Modus aktiv.'];
+            return ['success' => false, 'message' => 'Read-only mode active.'];
         }
 
         if (!file_exists($file)) {
@@ -77,11 +77,11 @@ class NagiosWriter
             $content = '';
         } else {
             if (!is_writable($file)) {
-                return ['success' => false, 'message' => 'Datei nicht schreibbar: ' . $file];
+                return ['success' => false, 'message' => 'File not writable:' . $file];
             }
             $content = file_get_contents($file);
             if ($content === false) {
-                return ['success' => false, 'message' => 'Datei konnte nicht gelesen werden.'];
+                return ['success' => false, 'message' => 'Could not read file.'];
             }
 
             // Backup existing file
@@ -126,17 +126,17 @@ class NagiosWriter
         string $comments = ''
     ): array {
         if ($this->config['readonly'] ?? false) {
-            return ['success' => false, 'message' => 'Read-Only-Modus aktiv.'];
+            return ['success' => false, 'message' => 'Read-only mode active.'];
         }
 
         if (!is_writable($file)) {
-            return ['success' => false, 'message' => 'Datei nicht schreibbar: ' . $file];
+            return ['success' => false, 'message' => 'File not writable:' . $file];
         }
 
         // Race condition check
         clearstatcache(true, $file);
         if (filemtime($file) !== $expectedMtime) {
-            return ['success' => false, 'message' => 'Die Datei wurde zwischenzeitlich geändert. Bitte Seite neu laden.'];
+            return ['success' => false, 'message' => 'File was modified externally. Please reload the page.'];
         }
 
         // Backup
@@ -147,7 +147,7 @@ class NagiosWriter
 
         $lines = file($file);
         if ($lines === false) {
-            return ['success' => false, 'message' => 'Datei konnte nicht gelesen werden.'];
+            return ['success' => false, 'message' => 'Could not read file.'];
         }
 
         // Calculate how many comment lines to also remove
@@ -183,16 +183,16 @@ class NagiosWriter
     public function saveRaw(string $file, string $content, int $expectedMtime): array
     {
         if ($this->config['readonly'] ?? false) {
-            return ['success' => false, 'message' => 'Read-Only-Modus aktiv.'];
+            return ['success' => false, 'message' => 'Read-only mode active.'];
         }
 
         if (!is_writable($file)) {
-            return ['success' => false, 'message' => 'Datei nicht schreibbar: ' . $file];
+            return ['success' => false, 'message' => 'File not writable:' . $file];
         }
 
         clearstatcache(true, $file);
         if (filemtime($file) !== $expectedMtime) {
-            return ['success' => false, 'message' => 'Die Datei wurde zwischenzeitlich geändert. Bitte Seite neu laden.'];
+            return ['success' => false, 'message' => 'File was modified externally. Please reload the page.'];
         }
 
         $backup = $this->backup($file);
@@ -211,21 +211,21 @@ class NagiosWriter
     public function reloadNagios(): array
     {
         if ($this->config['readonly'] ?? false) {
-            return ['success' => false, 'message' => 'Read-Only-Modus aktiv.'];
+            return ['success' => false, 'message' => 'Read-only mode active.'];
         }
 
         $cmdFile = $this->config['nagios_cmd'];
 
         if (!file_exists($cmdFile)) {
-            return ['success' => false, 'message' => 'Command-Pipe nicht vorhanden. Läuft Nagios?'];
+            return ['success' => false, 'message' => 'Command pipe not found. Is Nagios running?'];
         }
 
         if (filetype($cmdFile) !== 'fifo') {
-            return ['success' => false, 'message' => 'Command-Pipe ist keine Named Pipe. Nagios-Neustart erforderlich.'];
+            return ['success' => false, 'message' => 'Command pipe is not a named pipe. Nagios restart required.'];
         }
 
         if (!is_writable($cmdFile)) {
-            return ['success' => false, 'message' => 'Command-Pipe nicht schreibbar: ' . $cmdFile];
+            return ['success' => false, 'message' => 'Command pipe not writable:' . $cmdFile];
         }
 
         $timestamp = time();
@@ -233,10 +233,10 @@ class NagiosWriter
 
         $result = @file_put_contents($cmdFile, $cmd, FILE_APPEND);
         if ($result === false) {
-            return ['success' => false, 'message' => 'Fehler beim Schreiben in die Command-Pipe.'];
+            return ['success' => false, 'message' => 'Error writing to command pipe.'];
         }
 
-        return ['success' => true, 'message' => 'Nagios-Reload ausgelöst.'];
+        return ['success' => true, 'message' => 'Nagios reload triggered.'];
     }
 
     // ── Private Helpers ─────────────────────────────────────────────────
@@ -250,12 +250,12 @@ class NagiosWriter
 
         if (!is_dir($backupDir)) {
             if (!@mkdir($backupDir, 0775, true)) {
-                return ['success' => false, 'message' => 'Backup-Verzeichnis konnte nicht erstellt werden: ' . $backupDir];
+                return ['success' => false, 'message' => 'Could not create backup directory:' . $backupDir];
             }
         }
 
         if (!is_writable($backupDir)) {
-            return ['success' => false, 'message' => 'Backup-Verzeichnis nicht schreibbar: ' . $backupDir];
+            return ['success' => false, 'message' => 'Backup directory not writable:' . $backupDir];
         }
 
         $basename = basename($file);
@@ -263,12 +263,12 @@ class NagiosWriter
         $backupFile = "$backupDir/{$basename}_{$timestamp}.bak";
 
         if (!@copy($file, $backupFile)) {
-            return ['success' => false, 'message' => 'Backup konnte nicht erstellt werden: ' . $backupFile];
+            return ['success' => false, 'message' => 'Could not create backup:' . $backupFile];
         }
 
         $this->rotateBackups($backupDir);
 
-        return ['success' => true, 'message' => 'Backup erstellt: ' . $backupFile];
+        return ['success' => true, 'message' => 'Backup created:' . $backupFile];
     }
 
     /**
@@ -319,13 +319,13 @@ class NagiosWriter
             // Fallback: use backup dir for temp file
             $tmpFile = tempnam($this->config['backup_dir'], '.nagcfg_');
             if ($tmpFile === false) {
-                return ['success' => false, 'message' => 'Temp-Datei konnte nicht erstellt werden.'];
+                return ['success' => false, 'message' => 'Could not create temp file.'];
             }
         }
 
         if (file_put_contents($tmpFile, $content) === false) {
             @unlink($tmpFile);
-            return ['success' => false, 'message' => 'Temp-Datei konnte nicht geschrieben werden.'];
+            return ['success' => false, 'message' => 'Could not write temp file.'];
         }
 
         // Preserve original permissions and ownership
@@ -343,12 +343,12 @@ class NagiosWriter
             // rename fails across filesystems, fallback to copy
             if (!@copy($tmpFile, $file)) {
                 @unlink($tmpFile);
-                return ['success' => false, 'message' => 'Datei konnte nicht geschrieben werden.'];
+                return ['success' => false, 'message' => 'Could not write file.'];
             }
             @unlink($tmpFile);
         }
 
-        return ['success' => true, 'message' => 'Datei gespeichert.'];
+        return ['success' => true, 'message' => 'File saved.'];
     }
 
     /**

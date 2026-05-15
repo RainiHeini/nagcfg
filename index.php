@@ -17,7 +17,7 @@ $flashMessage = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRF check
     if (($_POST['csrf_token'] ?? '') !== $_SESSION['csrf_token']) {
-        $flashMessage = ['type' => 'error', 'text' => 'Ungültiger CSRF-Token. Bitte Seite neu laden.'];
+        $flashMessage = ['type' => 'error', 'text' => 'Invalid CSRF token. Please reload the page.'];
     } else {
         $writer = new NagiosWriter($config);
         $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $parser_tmp->parse();
             $allowedFiles = $parser_tmp->getFiles();
             if (!in_array($file, $allowedFiles, true)) {
-                $flashMessage = ['type' => 'error', 'text' => 'Dateipfad nicht erlaubt.'];
+                $flashMessage = ['type' => 'error', 'text' => 'File path not allowed.'];
             } else {
                 // Check for duplicate name before saving
                 $oldKey = $_POST['old_key'] ?? null;
@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($newKey !== null && $newKey !== $oldKey) {
                         $existing = $parser_tmp->findObject($postType, $newKey);
                         if ($existing) {
-                            $flashMessage = ['type' => 'error', 'text' => "Name '$newKey' existiert bereits. Umbenennung abgebrochen."];
+                            $flashMessage = ['type' => 'error', 'text' => "Name '$newKey' already exists. Rename aborted."];
                         }
                     }
                 }
@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                 $result = $writer->saveObject($file, $lineStart, $lineEnd, $postType, $directives, $expectedMtime);
                 if ($result['success']) {
-                    $flashMessage = ['type' => 'success', 'text' => 'Änderungen gespeichert.'];
+                    $flashMessage = ['type' => 'success', 'text' => 'Changes saved.'];
 
                     // Cascade rename if primary key changed
                     $oldKey = $_POST['old_key'] ?? null;
@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($newKey !== null && $newKey !== $oldKey) {
                             $cascaded = cascadeRename($config, $writer, $postType, $oldKey, $newKey);
                             if ($cascaded > 0) {
-                                $flashMessage['text'] .= " $cascaded Referenz" . ($cascaded > 1 ? 'en' : '') . " aktualisiert.";
+                                $flashMessage['text'] .= " $cascaded reference" . ($cascaded > 1 ? 's' : '') . " updated.";
                             }
                         }
                     }
@@ -115,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 if ($wr['success']) $tplRenamed++;
                             }
                             if ($tplRenamed > 0) {
-                                $flashMessage['text'] .= " $tplRenamed use-Referenz" . ($tplRenamed > 1 ? 'en' : '') . " aktualisiert.";
+                                $flashMessage['text'] .= " $tplRenamed use reference" . ($tplRenamed > 1 ? 's' : '') . " updated.";
                             }
                         }
                     }
@@ -127,10 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($returnCode === 0) {
                         $reload = $writer->reloadNagios();
                         if ($reload['success']) {
-                            $flashMessage['text'] .= ' Nagios neu geladen.';
+                            $flashMessage['text'] .= ' Nagios reloaded.';
                         }
                     } else {
-                        $flashMessage['text'] .= ' Achtung: Nagios wurde NICHT neu geladen (Validierungsfehler).';
+                        $flashMessage['text'] .= ' Warning: Nagios was NOT reloaded (validation error).';
                         $flashMessage['type'] = 'warning';
                         $flashMessage['details'] = implode("\n", $output);
                     }
@@ -204,13 +204,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if (!$fileAllowed) {
-                $flashMessage = ['type' => 'error', 'text' => 'Zieldatei nicht erlaubt: ' . $targetFile];
+                $flashMessage = ['type' => 'error', 'text' => 'Target file not allowed: ' . $targetFile];
             } elseif (empty($directives)) {
-                $flashMessage = ['type' => 'error', 'text' => 'Keine Direktiven angegeben.'];
+                $flashMessage = ['type' => 'error', 'text' => 'No directives specified.'];
             } else {
                 $result = $writer->appendObject($targetFile, $postType, $directives);
                 if ($result['success']) {
-                    $flashMessage = ['type' => 'success', 'text' => 'Objekt erstellt.'];
+                    $flashMessage = ['type' => 'success', 'text' => 'Object created.'];
                     // Redirect to edit view
                     $keyField = NagiosParser::getKeyField($postType);
                     if ($postType === 'service' && isset($directives['host_name'], $directives['service_description'])) {
@@ -239,12 +239,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $expectedName = $_POST['expected_name'] ?? '';
 
             if ($confirmName !== $expectedName) {
-                $flashMessage = ['type' => 'error', 'text' => 'Bestätigungsname stimmt nicht überein.'];
+                $flashMessage = ['type' => 'error', 'text' => 'Confirmation name does not match.'];
             } else {
                 $parser_tmp = new NagiosParser($config);
                 $parser_tmp->parse();
                 if (!in_array($file, $parser_tmp->getFiles(), true)) {
-                    $flashMessage = ['type' => 'error', 'text' => 'Dateipfad nicht erlaubt.'];
+                    $flashMessage = ['type' => 'error', 'text' => 'File path not allowed.'];
                 } else {
                     $result = $writer->deleteObject($file, $lineStart, $lineEnd, $expectedMtime, $comments);
                     if ($result['success']) {
@@ -264,11 +264,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $parser_tmp = new NagiosParser($config);
             $parser_tmp->parse();
             if (!in_array($file, $parser_tmp->getFiles(), true)) {
-                $flashMessage = ['type' => 'error', 'text' => 'Dateipfad nicht erlaubt.'];
+                $flashMessage = ['type' => 'error', 'text' => 'File path not allowed.'];
             } else {
                 $result = $writer->saveRaw($file, $content, $expectedMtime);
                 $flashMessage = $result['success']
-                    ? ['type' => 'success', 'text' => 'Datei gespeichert.']
+                    ? ['type' => 'success', 'text' => 'File saved.']
                     : ['type' => 'error', 'text' => $result['message']];
             }
 
@@ -304,7 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $tplFile = $files[0] ?? null;
                     }
                     if (!$tplFile) {
-                        $msgs[] = "Keine Konfigurationsdatei für $tplType gefunden.";
+                        $msgs[] = "No config file found for $tplType.";
                         $ok = false;
                         continue;
                     }
@@ -317,9 +317,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $result = $writer->appendObject($tplFile, $tplType, $directives);
                     if ($result['success']) {
                         $activated = activateNagcfgAll($config, $writer, $tplType, $nagcfgName);
-                        $m = "'$nagcfgName' erstellt";
+                        $m = "'$nagcfgName' created";
                         if ($activated > 0) {
-                            $m .= ", $activated Template" . ($activated > 1 ? 's' : '') . " aktiviert";
+                            $m .= ", $activated template" . ($activated > 1 ? 's' : '') . " activated";
                         }
                         $msgs[] = $m;
                     } else {
@@ -336,7 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($iconErr) $msgs[] = $iconErr;
 
                 if (empty($msgs)) {
-                    $flashMessage = ['type' => 'success', 'text' => 'Bereits installiert.'];
+                    $flashMessage = ['type' => 'success', 'text' => 'Already installed.'];
                 } else {
                     $flashMessage = ['type' => $ok ? 'success' : 'error', 'text' => implode('. ', $msgs) . '.'];
                 }
@@ -390,13 +390,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $parser_tmp->parse();
                     $tpl = $parser_tmp->findObject($tplType, $nagcfgName);
                     if (!$tpl) {
-                        $msgs[] = "'$nagcfgName' nicht gefunden";
+                        $msgs[] = "'$nagcfgName' not found";
                         $ok = false;
                     } else {
                         clearstatcache(true, $tpl['file']);
                         $result = $writer->deleteObject($tpl['file'], $tpl['line_start'], $tpl['line_end'], filemtime($tpl['file']), $tpl['comments']);
                         if ($result['success']) {
-                            $msgs[] = "'$nagcfgName' entfernt";
+                            $msgs[] = "'$nagcfgName' removed";
                         } else {
                             $msgs[] = "$nagcfgName: " . $result['message'];
                             $ok = false;
@@ -411,7 +411,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if (empty($msgs)) {
-                    $flashMessage = ['type' => 'success', 'text' => 'Bereits deinstalliert.'];
+                    $flashMessage = ['type' => 'success', 'text' => 'Already uninstalled.'];
                 } else {
                     $flashMessage = ['type' => $ok ? 'success' : 'error', 'text' => implode('. ', $msgs) . '.'];
                 }
@@ -421,11 +421,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 foreach (['host' => 'nagcfg-host', 'service' => 'nagcfg-service'] as $tplType => $nagcfgName) {
                     $activated = activateNagcfgAll($config, $writer, $tplType, $nagcfgName);
                     if ($activated > 0) {
-                        $msgs[] = "$nagcfgName: $activated Template" . ($activated > 1 ? 's' : '') . " aktiviert";
+                        $msgs[] = "$nagcfgName: $activated template" . ($activated > 1 ? 's' : '') . " activated";
                     }
                 }
                 if (empty($msgs)) {
-                    $flashMessage = ['type' => 'success', 'text' => 'Bereits überall aktiv.'];
+                    $flashMessage = ['type' => 'success', 'text' => 'Already active everywhere.'];
                 } else {
                     $flashMessage = ['type' => 'success', 'text' => implode('. ', $msgs) . '.'];
                 }
@@ -439,10 +439,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($validateRc === 0) {
                     $reload = $writer->reloadNagios();
                     if ($reload['success']) {
-                        $flashMessage['text'] .= ' Nagios neu geladen.';
+                        $flashMessage['text'] .= ' Nagios reloaded.';
                     }
                 } else {
-                    $flashMessage['text'] .= ' Achtung: Nagios wurde NICHT neu geladen (Validierungsfehler). Bitte Konfiguration prüfen.';
+                    $flashMessage['text'] .= ' Warning: Nagios was NOT reloaded (validation error). Please check configuration.';
                     $flashMessage['type'] = 'error';
                 }
             }
@@ -475,8 +475,8 @@ if (isset($_SESSION['flash'])) {
 }
 
 // Redirect flash from GET params
-if (isset($_GET['saved']))   $flashMessage = $flashMessage ?? ['type' => 'success', 'text' => 'Änderungen gespeichert.'];
-if (isset($_GET['deleted'])) $flashMessage = $flashMessage ?? ['type' => 'success', 'text' => 'Objekt gelöscht.'];
+if (isset($_GET['saved']))   $flashMessage = $flashMessage ?? ['type' => 'success', 'text' => 'Changes saved.'];
+if (isset($_GET['deleted'])) $flashMessage = $flashMessage ?? ['type' => 'success', 'text' => 'Object deleted.'];
 
 // Parse all config files (re-parse after potential writes)
 $parser = new NagiosParser($config);
@@ -650,18 +650,18 @@ function directivesForType(string $type): array
 function listColumns(string $type): array
 {
     return match ($type) {
-        'host'              => [['host_name','Host',0], ['alias','Alias',0], ['address','Adresse',0], ['use','Template',0]],
-        'hostgroup'         => [['hostgroup_name','Hostgruppe',0], ['alias','Alias',0], ['members','Mitglieder',60]],
+        'host'              => [['host_name','Host',0], ['alias','Alias',0], ['address','Address',0], ['use','Template',0]],
+        'hostgroup'         => [['hostgroup_name','Hostgroup',0], ['alias','Alias',0], ['members','Members',60]],
         'service'           => [['host_name','Host',0], ['service_description','Service',0], ['check_command','Check Command',40], ['use','Template',0]],
-        'servicegroup'      => [['servicegroup_name','Servicegruppe',0], ['alias','Alias',0], ['members','Mitglieder',60]],
-        'contact'           => [['contact_name','Kontakt',0], ['alias','Alias',0], ['email','E-Mail',0]],
-        'contactgroup'      => [['contactgroup_name','Kontaktgruppe',0], ['alias','Alias',0], ['members','Mitglieder',60]],
+        'servicegroup'      => [['servicegroup_name','Servicegroup',0], ['alias','Alias',0], ['members','Members',60]],
+        'contact'           => [['contact_name','Contact',0], ['alias','Alias',0], ['email','E-Mail',0]],
+        'contactgroup'      => [['contactgroup_name','Contactgroup',0], ['alias','Alias',0], ['members','Members',60]],
         'command'           => [['command_name','Command',0], ['command_line','Command Line',80]],
-        'timeperiod'        => [['timeperiod_name','Zeitraum',0], ['alias','Alias',0]],
-        'hostdependency'    => [['host_name','Host',0], ['dependent_host_name','Abh. Host',0]],
-        'hostescalation'    => [['host_name','Host',0], ['contact_groups','Kontaktgruppen',0]],
-        'servicedependency' => [['host_name','Host',0], ['service_description','Service',0], ['dependent_host_name','Abh. Host',0]],
-        'serviceescalation' => [['host_name','Host',0], ['service_description','Service',0], ['contact_groups','Kontaktgruppen',0]],
+        'timeperiod'        => [['timeperiod_name','Timeperiod',0], ['alias','Alias',0]],
+        'hostdependency'    => [['host_name','Host',0], ['dependent_host_name','Dep. Host',0]],
+        'hostescalation'    => [['host_name','Host',0], ['contact_groups','Contact Groups',0]],
+        'servicedependency' => [['host_name','Host',0], ['service_description','Service',0], ['dependent_host_name','Dep. Host',0]],
+        'serviceescalation' => [['host_name','Host',0], ['service_description','Service',0], ['contact_groups','Contact Groups',0]],
         default             => [],
     };
 }
@@ -673,16 +673,16 @@ function typeLabel(string $type): string
 {
     return match ($type) {
         'host'              => 'Hosts',
-        'hostgroup'         => 'Hostgruppen',
-        'hostdependency'    => 'Host-Dependencies',
-        'hostescalation'    => 'Host-Eskalationen',
+        'hostgroup'         => 'Hostgroups',
+        'hostdependency'    => 'Host Dependencies',
+        'hostescalation'    => 'Host Escalations',
         'service'           => 'Services',
-        'servicegroup'      => 'Servicegruppen',
-        'servicedependency' => 'Service-Dependencies',
-        'serviceescalation' => 'Service-Eskalationen',
-        'contact'           => 'Kontakte',
-        'contactgroup'      => 'Kontaktgruppen',
-        'timeperiod'        => 'Zeiträume',
+        'servicegroup'      => 'Servicegroups',
+        'servicedependency' => 'Service Dependencies',
+        'serviceescalation' => 'Service Escalations',
+        'contact'           => 'Contacts',
+        'contactgroup'      => 'Contactgroups',
+        'timeperiod'        => 'Timeperiods',
         'command'           => 'Commands',
         default             => ucfirst($type),
     };
@@ -1095,23 +1095,23 @@ function getNagiosImagesDir(array $config): ?string
 function installActionIcon(array $config): ?string
 {
     $imagesDir = getNagiosImagesDir($config);
-    if (!$imagesDir) return 'Nagios-Images-Verzeichnis nicht gefunden.';
+    if (!$imagesDir) return 'Nagios images directory not found.';
 
     $actionGif = $imagesDir . '/action.gif';
     $backup = $imagesDir . '/action-pre-nagcfg.gif';
     $gearSrc = __DIR__ . '/action-gear.gif';
 
-    if (!is_file($gearSrc)) return 'Zahnrad-Icon nicht gefunden.';
+    if (!is_file($gearSrc)) return 'Gear icon not found.';
 
     // Only backup once
     if (!is_file($backup) && is_file($actionGif)) {
         if (!@copy($actionGif, $backup)) {
-            return 'Backup von action.gif fehlgeschlagen.';
+            return 'Backup of action.gif failed.';
         }
     }
 
     if (!@copy($gearSrc, $actionGif)) {
-        return 'action.gif konnte nicht ersetzt werden.';
+        return 'Could not replace action.gif.';
     }
     return null; // success
 }
@@ -1129,7 +1129,7 @@ function uninstallActionIcon(array $config): ?string
 
     if (is_file($backup)) {
         if (!@copy($backup, $actionGif)) {
-            return 'action.gif konnte nicht wiederhergestellt werden.';
+            return 'Could not restore action.gif.';
         }
         @unlink($backup);
     }
@@ -1200,11 +1200,11 @@ function buildRefData(NagiosParser $parser): array
             <a href="/nagcfg/" class="logo">NagCFG</a>
             <nav>
                 <a href="/nagcfg/"<?= activeClass($view, 'dashboard') ?>>Dashboard</a>
-                <a href="/nagcfg/?view=files"<?= activeClass($view, 'files') ?>>Dateien</a>
-                <a href="/nagcfg/?view=validate"<?= activeClass($view, 'validate') ?>>Validieren</a>
+                <a href="/nagcfg/?view=files"<?= activeClass($view, 'files') ?>>Files</a>
+                <a href="/nagcfg/?view=validate"<?= activeClass($view, 'validate') ?>>Validate</a>
                 <a href="/nagcfg/?view=settings"<?= activeClass($view, 'settings') ?>>Settings</a>
             </nav>
-            <button id="theme-toggle" type="button" title="Theme umschalten"></button>
+            <button id="theme-toggle" type="button" title="Toggle theme"></button>
         </div>
     </header>
 
@@ -1229,7 +1229,7 @@ if ($view === 'dashboard'):
 
         <?php if ($parser->getErrors()): ?>
         <div class="alert alert-error">
-            <strong>Parser-Fehler:</strong>
+            <strong>Parser errors:</strong>
             <ul>
             <?php foreach ($parser->getErrors() as $err): ?>
                 <li><?= h($err) ?></li>
@@ -1260,7 +1260,7 @@ if ($view === 'dashboard'):
         }
         if ($hasSecondary):
         ?>
-        <h3>Erweitert</h3>
+        <h3>Advanced</h3>
         <div class="tiles tiles-small">
         <?php foreach ($secondaryTypes as $t):
             $count = count($parser->getObjectsByType($t));
@@ -1275,27 +1275,27 @@ if ($view === 'dashboard'):
         <?php endif; ?>
 
         <div class="actions-bar">
-            <a href="/nagcfg/?view=validate" class="btn">Konfiguration validieren</a>
+            <a href="/nagcfg/?view=validate" class="btn">Validate configuration</a>
             <?php if (!$config['readonly']): ?>
             <form method="post" action="/nagcfg/?action=reload" style="display:inline">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
-                <button type="submit" class="btn btn-primary" onclick="return confirm('Nagios wirklich neu laden?')">Nagios neu laden</button>
+                <button type="submit" class="btn btn-primary" onclick="return confirm('Reload Nagios?')">Reload Nagios</button>
             </form>
             <?php endif; ?>
         </div>
 
         <div class="status-bar">
             <span class="status-indicator <?= $nagios['running'] ? 'status-ok' : 'status-critical' ?>"></span>
-            Nagios: <?= $nagios['running'] ? 'Läuft (PID ' . $nagios['pid'] . ')' : 'Nicht aktiv' ?>
-            &middot; <?= count($parser->getFiles()) ?> Konfigurationsdateien
-            &middot; <?= count($parser->getObjects()) ?> Objekte
+            Nagios: <?= $nagios['running'] ? 'Running (PID' . $nagios['pid'] . ')' : 'Not running' ?>
+            &middot; <?= count($parser->getFiles()) ?> Config Files
+            &middot; <?= count($parser->getObjects()) ?> objects
         </div>
 
 <?php
 // ── List View ───────────────────────────────────────────────────────────
 elseif ($view === 'list'):
     if (!$type || !in_array($type, NagiosParser::getValidTypes(), true)) {
-        echo '<div class="alert alert-error">Unbekannter Objekttyp.</div>';
+        echo '<div class="alert alert-error">Unknown object type.</div>';
     } else {
         $objects = $parser->getObjectsByType($type);
         $columns = listColumns($type);
@@ -1304,9 +1304,9 @@ elseif ($view === 'list'):
         <div class="list-header">
             <h2><?= $label ?> <span class="count">(<?= count($objects) ?>)</span></h2>
             <div class="list-actions">
-                <input type="text" id="search" placeholder="Suchen..." class="search-input" autofocus>
+                <input type="text" id="search" placeholder="Search..." class="search-input" autofocus>
                 <?php if (!$config['readonly']): ?>
-                <a href="/nagcfg/?view=new&type=<?= h($type) ?>" class="btn btn-primary">Neu</a>
+                <a href="/nagcfg/?view=new&type=<?= h($type) ?>" class="btn btn-primary">New</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -1317,7 +1317,7 @@ elseif ($view === 'list'):
                 <?php foreach ($columns as $col): ?>
                     <th data-sort="<?= h($col[0]) ?>"><?= h($col[1]) ?></th>
                 <?php endforeach; ?>
-                    <th>Datei</th>
+                    <th>File</th>
                 </tr>
             </thead>
             <tbody>
@@ -1364,7 +1364,7 @@ elseif ($view === 'edit'):
 
     if (!$obj):
 ?>
-        <div class="alert alert-error">Objekt nicht gefunden.</div>
+        <div class="alert alert-error">Object not found.</div>
 <?php else:
         $refData = buildRefData($parser);
         $knownDirectives = directivesForType($type);
@@ -1408,7 +1408,7 @@ elseif ($view === 'edit'):
         <div class="edit-header">
             <h2><?= h(typeLabel($type)) ?>: <?= h($parser->getDisplayName($obj)) ?></h2>
             <span class="meta">
-                <?= h($obj['file']) ?> (Zeile <?= $obj['line_start'] ?>–<?= $obj['line_end'] ?>)
+                <?= h($obj['file']) ?> (line <?= $obj['line_start'] ?>–<?= $obj['line_end'] ?>)
             </span>
         </div>
 
@@ -1462,7 +1462,7 @@ elseif ($view === 'edit'):
 
             <table class="edit-table">
                 <thead>
-                    <tr><th>Direktive</th><th>Wert</th><th></th></tr>
+                    <tr><th>Directive</th><th>Value</th><th></th></tr>
                 </thead>
                 <tbody>
                 <?php foreach ($obj['directives'] as $key => $val):
@@ -1489,7 +1489,7 @@ elseif ($view === 'edit'):
                             ?>
                             <div class="ref-links">
                                 <?php foreach ($parts as $p): if ($p === '') continue; ?>
-                                <a href="<?= h(refEditUrl($linkType, $p)) ?>" class="ref-badge" title="<?= h($p) ?> bearbeiten"><?= h($p) ?></a>
+                                <a href="<?= h(refEditUrl($linkType, $p)) ?>" class="ref-badge" title="<?= h($p) ?> edit"><?= h($p) ?></a>
                                 <?php endforeach; ?>
                             </div>
                             <?php endif; ?>
@@ -1498,34 +1498,34 @@ elseif ($view === 'edit'):
                             ?>
                             <div class="ref-links">
                                 <?php foreach ($parts as $p): if ($p === '') continue; ?>
-                                <a href="<?= h(refEditUrl($type, $p)) ?>" class="ref-badge" title="Template '<?= h($p) ?>' bearbeiten"><?= h($p) ?></a>
+                                <a href="<?= h(refEditUrl($type, $p)) ?>" class="ref-badge" title="Template '<?= h($p) ?>' edit"><?= h($p) ?></a>
                                 <?php endforeach; ?>
                             </div>
                             <?php endif; ?>
                         </td>
-                        <td><button type="button" class="btn-remove" title="Entfernen">&times;</button></td>
+                        <td><button type="button" class="btn-remove" title="Remove">&times;</button></td>
                     </tr>
                 <?php endforeach; ?>
                     <tr class="new-directive-row">
-                        <td><input type="text" name="keys[]" value="" class="input-key" placeholder="Neue Direktive" list="dl-directives" id="new-directive-key"></td>
-                        <td><input type="text" name="values[]" value="" class="input-value" placeholder="Wert" id="new-directive-value"></td>
-                        <td><button type="button" class="btn-add" title="Weitere hinzufügen">+</button></td>
+                        <td><input type="text" name="keys[]" value="" class="input-key" placeholder="New directive" list="dl-directives" id="new-directive-key"></td>
+                        <td><input type="text" name="values[]" value="" class="input-value" placeholder="Value" id="new-directive-value"></td>
+                        <td><button type="button" class="btn-add" title="Add another">+</button></td>
                     </tr>
                 </tbody>
             </table>
 
             <div class="form-actions">
                 <?php if (!$config['readonly']): ?>
-                <button type="submit" name="action" value="save" class="btn btn-primary">Speichern</button>
+                <button type="submit" name="action" value="save" class="btn btn-primary">Save</button>
                 <?php endif; ?>
-                <a href="/nagcfg/?view=list&type=<?= h($type) ?>" class="btn">Abbrechen</a>
-                <a href="/nagcfg/?view=new&type=<?= h($type) ?>&copy_file=<?= urlencode($obj['file']) ?>&copy_line=<?= $obj['line_start'] ?>" class="btn" style="margin-left:auto">Kopieren</a>
+                <a href="/nagcfg/?view=list&type=<?= h($type) ?>" class="btn">Cancel</a>
+                <a href="/nagcfg/?view=new&type=<?= h($type) ?>&copy_file=<?= urlencode($obj['file']) ?>&copy_line=<?= $obj['line_start'] ?>" class="btn" style="margin-left:auto">Copy</a>
             </div>
         </form>
 
         <?php if (!$config['readonly']): ?>
         <details class="delete-section">
-            <summary>Objekt löschen</summary>
+            <summary>Delete object</summary>
             <form method="post" action="/nagcfg/?action=delete" class="delete-form">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                 <input type="hidden" name="type" value="<?= h($type) ?>">
@@ -1536,31 +1536,31 @@ elseif ($view === 'edit'):
                 <input type="hidden" name="comments" value="<?= h($obj['comments']) ?>">
                 <input type="hidden" name="expected_name" value="<?= h($parser->getDisplayName($obj)) ?>">
                 <div class="alert alert-warning">
-                    Zur Bestätigung den Namen <strong><?= h($parser->getDisplayName($obj)) ?></strong> eingeben:
+                    Type the name <strong><?= h($parser->getDisplayName($obj)) ?></strong> to confirm:
                 </div>
                 <div class="delete-confirm">
                     <input type="text" name="confirm_name" class="search-input" placeholder="<?= h($parser->getDisplayName($obj)) ?>" autocomplete="off">
-                    <button type="submit" class="btn btn-danger">Endgültig löschen</button>
+                    <button type="submit" class="btn btn-danger">Delete permanently</button>
                 </div>
             </form>
         </details>
         <?php endif; ?>
 
         <details class="raw-view">
-            <summary>Raw anzeigen</summary>
+            <summary>Show raw</summary>
             <pre class="raw-block"><?= h($obj['raw']) ?></pre>
         </details>
 
         <?php if ($type === 'host' && count($relatedServices) > 0): ?>
         <div class="related-section">
-            <h3>Zugehörige Services <span class="count">(<?= count($relatedServices) ?>)</span></h3>
+            <h3>Related Services <span class="count">(<?= count($relatedServices) ?>)</span></h3>
             <table class="obj-table">
                 <thead>
                     <tr>
                         <th>Service</th>
                         <th>Check Command</th>
                         <th>Template</th>
-                        <th>Datei</th>
+                        <th>File</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1602,9 +1602,9 @@ elseif ($view === 'edit'):
 // ── New View ────────────────────────────────────────────────────────────
 elseif ($view === 'new'):
     if (!$type || !in_array($type, NagiosParser::getValidTypes(), true)) {
-        echo '<div class="alert alert-error">Unbekannter Objekttyp.</div>';
+        echo '<div class="alert alert-error">Unknown object type.</div>';
     } elseif ($config['readonly'] ?? false) {
-        echo '<div class="alert alert-error">Read-Only-Modus aktiv.</div>';
+        echo '<div class="alert alert-error">Read-only mode active.</div>';
     } else {
         $refData = buildRefData($parser);
         $knownDirectives = directivesForType($type);
@@ -1643,7 +1643,7 @@ elseif ($view === 'new'):
             elseif ($ref && isset($refData[$ref])) $neededDataLists[$ref] = true;
         }
 ?>
-        <h2>Neues Objekt: <?= h(typeLabel($type)) ?><?= $isTemplateMode ? ' (Template)' : '' ?></h2>
+        <h2>New object: <?= h(typeLabel($type)) ?><?= $isTemplateMode ? ' (Template)' : '' ?></h2>
 
         <?php foreach ($neededDataLists as $dlKey => $_):
             $options = $refData[$dlKey] ?? [];
@@ -1668,9 +1668,9 @@ elseif ($view === 'new'):
             <div class="new-options">
                 <?php if (count($templates) > 0): ?>
                 <label>
-                    Basierend auf Template:
+                    Based on template:
                     <select id="template-select" class="search-input">
-                        <option value="">— Kein Template —</option>
+                        <option value="">— No template —</option>
                         <?php foreach ($templates as $tpl): ?>
                         <option value="<?= h($tpl) ?>"><?= h($tpl) ?></option>
                         <?php endforeach; ?>
@@ -1678,7 +1678,7 @@ elseif ($view === 'new'):
                 </label>
                 <?php endif; ?>
                 <label>
-                    Zieldatei:
+                    Target file:
                     <select name="target_file" class="search-input" required>
                         <?php foreach ($targetFiles as $path => $name): ?>
                         <option value="<?= h($path) ?>"><?= h($name) ?></option>
@@ -1689,7 +1689,7 @@ elseif ($view === 'new'):
 
             <table class="edit-table">
                 <thead>
-                    <tr><th>Direktive</th><th>Wert</th><th></th></tr>
+                    <tr><th>Directive</th><th>Value</th><th></th></tr>
                 </thead>
                 <tbody>
                 <?php if (!empty($prefill)):
@@ -1703,20 +1703,20 @@ elseif ($view === 'new'):
                         <td><input type="text" name="keys[]" value="<?= h($key) ?>" class="input-key" readonly></td>
                         <td><input type="text" name="values[]" value="<?= h($val) ?>" class="input-value"
                             <?= $dlId ? 'list="' . h($dlId) . '"' : '' ?>></td>
-                        <td><button type="button" class="btn-remove" title="Entfernen">&times;</button></td>
+                        <td><button type="button" class="btn-remove" title="Remove">&times;</button></td>
                     </tr>
                 <?php endforeach; endif; ?>
                     <tr class="new-directive-row">
-                        <td><input type="text" name="keys[]" value="" class="input-key" placeholder="Neue Direktive" list="dl-directives"></td>
-                        <td><input type="text" name="values[]" value="" class="input-value" placeholder="Wert"></td>
-                        <td><button type="button" class="btn-add" title="Weitere hinzufügen">+</button></td>
+                        <td><input type="text" name="keys[]" value="" class="input-key" placeholder="New directive" list="dl-directives"></td>
+                        <td><input type="text" name="values[]" value="" class="input-value" placeholder="Value"></td>
+                        <td><button type="button" class="btn-add" title="Add another">+</button></td>
                     </tr>
                 </tbody>
             </table>
 
             <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Erstellen</button>
-                <a href="/nagcfg/?view=list&type=<?= h($type) ?>" class="btn">Abbrechen</a>
+                <button type="submit" class="btn btn-primary">Create</button>
+                <a href="/nagcfg/?view=list&type=<?= h($type) ?>" class="btn">Cancel</a>
             </div>
         </form>
 
@@ -1757,7 +1757,7 @@ elseif ($view === 'new'):
                     var tr = document.createElement('tr');
                     tr.innerHTML = '<td><input type="text" name="keys[]" value="use" class="input-key" readonly></td>'
                         + '<td><input type="text" name="values[]" value="' + this.value.replace(/"/g, '&quot;') + '" class="input-value"></td>'
-                        + '<td><button type="button" class="btn-remove" title="Entfernen">&times;</button></td>';
+                        + '<td><button type="button" class="btn-remove" title="Remove">&times;</button></td>';
                     tbody.insertBefore(tr, newRow);
                 }
             });
@@ -1770,15 +1770,15 @@ elseif ($view === 'new'):
 elseif ($view === 'files'):
     $files = $parser->getFiles();
 ?>
-        <h2>Konfigurationsdateien <span class="count">(<?= count($files) ?>)</span></h2>
+        <h2>Config Files <span class="count">(<?= count($files) ?>)</span></h2>
 
         <table class="obj-table">
             <thead>
                 <tr>
-                    <th>Datei</th>
-                    <th>Objekte</th>
-                    <th>Größe</th>
-                    <th>Letzte Änderung</th>
+                    <th>File</th>
+                    <th>objects</th>
+                    <th>Size</th>
+                    <th>Last Modified</th>
                 </tr>
             </thead>
             <tbody>
@@ -1810,13 +1810,13 @@ elseif ($view === 'validate'):
     if (is_executable($nagiosBin)) {
         exec($nagiosBin . ' -v ' . escapeshellarg($nagiosCfg) . ' 2>&1', $output, $returnCode);
     } else {
-        $output = ["Nagios-Binary nicht ausführbar: $nagiosBin"];
+        $output = ["Nagios binary not executable: $nagiosBin"];
     }
 ?>
-        <h2>Konfigurationsvalidierung</h2>
+        <h2>Configuration Validation</h2>
 
         <div class="validate-result <?= $returnCode === 0 ? 'validate-ok' : 'validate-error' ?>">
-            <?= $returnCode === 0 ? 'Konfiguration OK' : 'Fehler gefunden' ?>
+            <?= $returnCode === 0 ? 'Configuration OK' : 'Errors found' ?>
         </div>
 
         <pre class="validate-output"><?php
@@ -1834,7 +1834,7 @@ elseif ($view === 'validate'):
         <?php if ($returnCode === 0 && !$config['readonly']): ?>
         <form method="post" action="/nagcfg/?action=reload">
             <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
-            <button type="submit" class="btn btn-primary" onclick="return confirm('Nagios wirklich neu laden?')">Nagios neu laden</button>
+            <button type="submit" class="btn btn-primary" onclick="return confirm('Reload Nagios?')">Reload Nagios</button>
         </form>
         <?php endif; ?>
 
@@ -1848,7 +1848,7 @@ elseif ($view === 'raw'):
     }
     if (!$allowed || !is_readable($file)):
 ?>
-        <div class="alert alert-error">Datei nicht gefunden oder nicht erlaubt.</div>
+        <div class="alert alert-error">File not found or not allowed.</div>
 <?php else:
         $content = file_get_contents($file);
 ?>
@@ -1862,11 +1862,11 @@ elseif ($view === 'raw'):
             <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
             <input type="hidden" name="file" value="<?= h($file) ?>">
             <input type="hidden" name="filemtime" value="<?= filemtime($file) ?>">
-            <div class="alert alert-warning">Änderungen in der Raw-Ansicht umgehen die Formular-Validierung.</div>
+            <div class="alert alert-warning">Changes in raw view bypass form validation.</div>
             <textarea name="content" class="raw-editor" spellcheck="false"><?= h($content) ?></textarea>
             <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Speichern</button>
-                <a href="/nagcfg/?view=files" class="btn">Zurück</a>
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="/nagcfg/?view=files" class="btn">Back</a>
             </div>
         </form>
         <?php else: ?>
@@ -1882,7 +1882,7 @@ elseif ($view === 'settings'):
         ['nagios.cfg',     $config['nagios_cfg'], 'read'],
         ['Nagios-Binary',  $config['nagios_bin'], 'exec'],
         ['Command-Pipe',   $config['nagios_cmd'], 'write'],
-        ['Backup-Verz.',   $config['backup_dir'], 'write'],
+        ['Backup Dir',     $config['backup_dir'], 'write'],
     ];
     foreach ($parser->getFiles() as $f) {
         $checks[] = [basename($f), $f, 'write'];
@@ -1890,7 +1890,7 @@ elseif ($view === 'settings'):
 ?>
         <h2>Settings</h2>
 
-        <h3>Konfiguration</h3>
+        <h3>Configuration</h3>
         <table class="obj-table">
             <tbody>
             <?php foreach ($config as $key => $val): ?>
@@ -1902,10 +1902,10 @@ elseif ($view === 'settings'):
             </tbody>
         </table>
 
-        <h3>Berechtigungen</h3>
+        <h3>Permissions</h3>
         <table class="obj-table">
             <thead>
-                <tr><th>Pfad</th><th>Benötigt</th><th>Status</th></tr>
+                <tr><th>Path</th><th>Required</th><th>Status</th></tr>
             </thead>
             <tbody>
             <?php foreach ($checks as [$label, $path, $need]):
@@ -1917,14 +1917,14 @@ elseif ($view === 'settings'):
                 <tr>
                     <td><?= h($path) ?> <span class="meta">(<?= h($label) ?>)</span></td>
                     <td><?= h($need) ?></td>
-                    <td><span class="status-indicator <?= $ok ? 'status-ok' : 'status-critical' ?>"></span> <?= $ok ? 'OK' : 'Fehlt' ?></td>
+                    <td><span class="status-indicator <?= $ok ? 'status-ok' : 'status-critical' ?>"></span> <?= $ok ? 'OK' : 'Missing' ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
         </table>
 
         <h3 id="actionurl">Nagios action_url Integration</h3>
-        <p>Verknüpft das Nagios-Webinterface mit NagCFG: Jeder Host und Service bekommt einen Bearbeiten-Link.</p>
+        <p>Links the Nagios web interface to NagCFG: every host and service gets an edit link.</p>
         <?php
         $nagcfgHostTpl = $parser->findObject('host', 'nagcfg-host');
         $nagcfgServiceTpl = $parser->findObject('service', 'nagcfg-service');
@@ -1972,7 +1972,7 @@ elseif ($view === 'settings'):
         ?>
         <p>
             <?php if ($auInstalled): ?>
-                <span class="status-indicator status-ok"></span> <strong>Installiert</strong>
+                <span class="status-indicator status-ok"></span> <strong>Installed</strong>
                 <?php
                 $hostOk = $actionUrlStatus['host']['active'] + $actionUrlStatus['host']['inherited'];
                 $hostTotal = $actionUrlStatus['host']['total'];
@@ -1982,10 +1982,10 @@ elseif ($view === 'settings'):
                 &mdash; Host-Templates: <?= $hostOk ?>/<?= $hostTotal ?>,
                 Service-Templates: <?= $svcOk ?>/<?= $svcTotal ?>
             <?php elseif ($auPartial): ?>
-                <span class="status-indicator status-warning"></span> <strong>Teilweise installiert</strong>
-                (<?= $nagcfgHostTpl ? 'nur Host' : 'nur Service' ?>)
+                <span class="status-indicator status-warning"></span> <strong>Partially installed</strong>
+                (<?= $nagcfgHostTpl ? 'host only' : 'service only' ?>)
             <?php else: ?>
-                <span class="status-indicator status-critical"></span> <strong>Nicht installiert</strong>
+                <span class="status-indicator status-critical"></span> <strong>Not installed</strong>
             <?php endif; ?>
         </p>
         <?php if (!($config['readonly'] ?? false)): ?>
@@ -1994,21 +1994,21 @@ elseif ($view === 'settings'):
             <form method="post" action="/nagcfg/?action=actionurl" style="display:inline">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                 <input type="hidden" name="step" value="install">
-                <button type="submit" class="btn btn-primary">Installieren</button>
+                <button type="submit" class="btn btn-primary">Install</button>
             </form>
             <?php endif; ?>
             <?php if ($auInstalled && $totalInactive > 0): ?>
             <form method="post" action="/nagcfg/?action=actionurl" style="display:inline">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                 <input type="hidden" name="step" value="activate_all">
-                <button type="submit" class="btn btn-primary">Aktualisieren</button>
+                <button type="submit" class="btn btn-primary">Activate All</button>
             </form>
             <?php endif; ?>
             <?php if ($auInstalled || $auPartial): ?>
             <form method="post" action="/nagcfg/?action=actionurl" style="display:inline">
                 <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
                 <input type="hidden" name="step" value="uninstall">
-                <button type="submit" class="btn btn-danger" onclick="return confirm('action_url Templates und alle Verweise entfernen?')">Deinstallieren</button>
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Remove action_url templates and all references?')">Uninstall</button>
             </form>
             <?php endif; ?>
         </p>
@@ -2022,7 +2022,7 @@ elseif ($view === 'settings'):
         }
         if ($hasDetails): ?>
         <details style="margin-top: 8px">
-            <summary class="meta">Vererbungsstatus anzeigen</summary>
+            <summary class="meta">Show inheritance status</summary>
             <table class="obj-table" style="margin-top: 4px">
                 <thead><tr><th>Template</th><th>Status</th></tr></thead>
                 <tbody>
@@ -2034,11 +2034,11 @@ elseif ($view === 'settings'):
                         <td><code><?= h($d['name']) ?></code> <span class="meta">(<?= $auType ?>)</span></td>
                         <td>
                             <?php if ($d['status'] === 'active'): ?>
-                                <span class="status-indicator status-ok"></span> Aktiv
+                                <span class="status-indicator status-ok"></span> Active
                             <?php elseif ($d['status'] === 'inherited'): ?>
-                                <span class="status-indicator status-ok"></span> Vererbt <span class="meta">(via <?= h($d['via']) ?>)</span>
+                                <span class="status-indicator status-ok"></span> Inherited <span class="meta">(via <?= h($d['via']) ?>)</span>
                             <?php else: ?>
-                                <span class="status-indicator status-critical"></span> Nicht aktiv
+                                <span class="status-indicator status-critical"></span> Inactive
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -2052,7 +2052,7 @@ elseif ($view === 'settings'):
 // ── Unknown View ────────────────────────────────────────────────────────
 else:
 ?>
-        <div class="alert alert-error">Unbekannte Ansicht: <?= h($view) ?></div>
+        <div class="alert alert-error">Unknown view: <?= h($view) ?></div>
 <?php endif; ?>
     </main>
 
