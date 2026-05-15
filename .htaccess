@@ -1,0 +1,4 @@
+AuthName "NagCFG"
+AuthType Basic
+AuthUserFile /usr/local/nagios/etc/htpasswd.users
+Require valid-user
