@@ -84,6 +84,7 @@ The integration can be uninstalled from the same settings page.
 
 ## Notes
 
+- **Use at your own risk.** This software is provided as-is with no warranty. Misconfiguration can break your Nagios monitoring. Always verify changes and keep backups
 - This project is an independent tool and is not affiliated with or endorsed by Nagios Enterprises
 - NagCFG is intended for use in trusted, internal networks only. It relies on HTTP Basic Authentication and should not be exposed to the public internet without additional security measures (HTTPS, VPN, firewall)
 - Every write operation automatically creates a backup of the affected file
@@ -92,4 +93,6 @@ The integration can be uninstalled from the same settings page.
 
 ## License
 
-MIT
+Copyright (c) 2026 RainiHeini
+
+[GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html)
