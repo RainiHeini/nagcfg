@@ -135,7 +135,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $flashMessage['details'] = implode("\n", $output);
                     }
 
-                    // PRG redirect to new URL if key changed
+                    // PRG redirect back to edit view
+                    $_SESSION['flash'] = $flashMessage;
                     $keyChanged = false;
                     if ($oldKey !== null && $keyField) {
                         $newKey = $directives[$keyField] ?? null;
@@ -145,7 +146,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $keyChanged = true;
                     }
                     if ($keyChanged) {
-                        $_SESSION['flash'] = $flashMessage;
                         if ($postType === 'service' && isset($directives['host_name'], $directives['service_description'])) {
                             header('Location: /nagcfg/?view=edit&type=service&host=' . urlencode($directives['host_name']) . '&desc=' . urlencode($directives['service_description']));
                         } elseif ($keyField && isset($directives[$keyField])) {
@@ -153,8 +153,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } elseif (isset($directives['name'])) {
                             header('Location: /nagcfg/?view=edit&type=' . urlencode($postType) . '&name=' . urlencode($directives['name']));
                         }
-                        exit;
+                    } else {
+                        if ($postType === 'service' && isset($directives['host_name'], $directives['service_description'])) {
+                            header('Location: /nagcfg/?view=edit&type=service&host=' . urlencode($directives['host_name']) . '&desc=' . urlencode($directives['service_description']));
+                        } elseif ($keyField && isset($directives[$keyField])) {
+                            header('Location: /nagcfg/?view=edit&type=' . urlencode($postType) . '&name=' . urlencode($directives[$keyField]));
+                        } elseif (isset($directives['name'])) {
+                            header('Location: /nagcfg/?view=edit&type=' . urlencode($postType) . '&name=' . urlencode($directives['name']));
+                        }
                     }
+                    exit;
                 } else {
                     $flashMessage = ['type' => 'error', 'text' => $result['message']];
                 }
