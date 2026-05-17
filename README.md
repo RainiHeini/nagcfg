@@ -15,7 +15,9 @@ Web-based configuration editor for Nagios Core 4.x. Edit, create and delete Nagi
 - Automatic validation (`nagios -v`) and reload after every change
 - Cascading rename: changing a name automatically updates all references across all config files
 - Duplicate detection on rename
-- Atomic writes with automatic backup
+- Cascading delete: removing a host also deletes its services and cleans up all references
+- Atomic writes with automatic backup before every change
+- Transaction-based backup and restore via the Backups tab
 - **[action_url integration: adds a clickable icon to every host and service in the Nagios web interface that links directly to the editor](#action_url-integration)**
 - Read-only mode via configuration
 - CSRF protection
@@ -97,6 +99,8 @@ The integration can be uninstalled from the same settings page.
 ![Settings](screenshots/settings.png)
 
 ![Validation](screenshots/validate.png)
+
+![Backups](screenshots/backups.png)
 
 ## Notes
 
