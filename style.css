@@ -270,6 +270,11 @@ h3 {
     text-decoration: none;
 }
 
+.btn-small {
+    padding: 3px 10px;
+    font-size: 12px;
+}
+
 .btn-primary {
     background: var(--btn-primary);
     color: var(--btn-primary-text);

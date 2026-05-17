@@ -3,6 +3,9 @@ session_start();
 clearstatcache();
 
 $config = require __DIR__ . '/config.php';
+if (!empty($config['timezone'])) {
+    date_default_timezone_set($config['timezone']);
+}
 require __DIR__ . '/NagiosParser.php';
 require __DIR__ . '/NagiosWriter.php';
 
@@ -20,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $flashMessage = ['type' => 'error', 'text' => 'Invalid CSRF token. Please reload the page.'];
     } else {
         $writer = new NagiosWriter($config);
+        $writer->setTransactionId(bin2hex(random_bytes(4)));
         $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
         if ($action === 'save' || $action === 'save_validate') {
@@ -256,7 +260,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $result = $writer->deleteObject($file, $lineStart, $lineEnd, $expectedMtime, $comments);
                     if ($result['success']) {
-                        header('Location: /nagcfg/?view=list&type=' . urlencode($postType) . '&deleted=1');
+                        $flashMessage = ['type' => 'success', 'text' => 'Object deleted.'];
+
+                        // Cascade delete: remove dependent objects and clean up references
+                        $deletedName = $expectedName;
+                        if ($deletedName !== '') {
+                            $cascade = cascadeDelete($config, $writer, $postType, $deletedName);
+                            if ($cascade['deleted'] > 0) {
+                                $flashMessage['text'] .= ' ' . $cascade['deleted'] . ' dependent object' . ($cascade['deleted'] > 1 ? 's' : '') . ' removed.';
+                            }
+                            if ($cascade['cleaned'] > 0) {
+                                $flashMessage['text'] .= ' ' . $cascade['cleaned'] . ' reference' . ($cascade['cleaned'] > 1 ? 's' : '') . ' cleaned.';
+                            }
+                        }
+
+                        // Validate and auto-reload Nagios
+                        $output = [];
+                        $returnCode = 0;
+                        exec($config['nagios_bin'] . ' -v ' . escapeshellarg($config['nagios_cfg']) . ' 2>&1', $output, $returnCode);
+                        if ($returnCode === 0) {
+                            $reload = $writer->reloadNagios();
+                            if ($reload['success']) {
+                                $flashMessage['text'] .= ' Nagios reloaded.';
+                            }
+                        } else {
+                            $flashMessage['text'] .= ' Warning: Nagios was NOT reloaded (validation error).';
+                            $flashMessage['type'] = 'warning';
+                            $flashMessage['details'] = implode("\n", $output);
+                        }
+
+                        $_SESSION['flash'] = $flashMessage;
+                        header('Location: /nagcfg/?view=list&type=' . urlencode($postType));
                         exit;
                     } else {
                         $flashMessage = ['type' => 'error', 'text' => $result['message']];
@@ -455,6 +489,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+    }
+
+    // ── Restore Backup ──────────────────────────────────────────────────
+    if ($action === 'restore') {
+        $backupFiles = $_POST['backup_files'] ?? [];
+        if (!is_array($backupFiles) || empty($backupFiles)) {
+            $flashMessage = ['type' => 'error', 'text' => 'No backup files specified.'];
+        } else {
+            $backupDir = rtrim($config['backup_dir'], '/');
+            $realBackupDir = realpath($backupDir);
+            $parser_tmp = new NagiosParser($config);
+            $parser_tmp->parse();
+            $knownFiles = $parser_tmp->getFiles();
+
+            $restored = [];
+            $errors = [];
+
+            foreach ($backupFiles as $backupFile) {
+                $realBackup = realpath($backupFile);
+                if ($realBackup === false || $realBackupDir === false || !str_starts_with($realBackup, $realBackupDir . '/')) {
+                    $errors[] = 'Invalid path: ' . basename($backupFile);
+                    continue;
+                }
+                if (!is_file($realBackup)) {
+                    $errors[] = 'Not found: ' . basename($backupFile);
+                    continue;
+                }
+                $basename = basename($realBackup);
+                // Match both old and new format
+                if (!preg_match('/^(.+?)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_[a-f0-9]+)?\.bak$/', $basename, $m)) {
+                    $errors[] = 'Invalid format: ' . $basename;
+                    continue;
+                }
+                $originalName = $m[1];
+                $targetFile = null;
+                foreach ($knownFiles as $f) {
+                    if (basename($f) === $originalName) {
+                        $targetFile = $f;
+                        break;
+                    }
+                }
+                if (!$targetFile) {
+                    $errors[] = "No config file for '$originalName'";
+                    continue;
+                }
+                $writer->backup($targetFile);
+                if (@copy($realBackup, $targetFile)) {
+                    $restored[] = $originalName;
+                } else {
+                    $errors[] = "Could not restore $originalName";
+                }
+            }
+
+            if (!empty($restored)) {
+                $flashMessage = ['type' => 'success', 'text' => 'Restored: ' . implode(', ', $restored) . '.'];
+                // Validate and reload
+                $output = [];
+                $returnCode = 0;
+                exec($config['nagios_bin'] . ' -v ' . escapeshellarg($config['nagios_cfg']) . ' 2>&1', $output, $returnCode);
+                if ($returnCode === 0) {
+                    $reload = $writer->reloadNagios();
+                    if ($reload['success']) {
+                        $flashMessage['text'] .= ' Nagios reloaded.';
+                    }
+                } else {
+                    $flashMessage['text'] .= ' Warning: Nagios was NOT reloaded (validation error).';
+                    $flashMessage['type'] = 'warning';
+                    $flashMessage['details'] = implode("\n", $output);
+                }
+            }
+            if (!empty($errors)) {
+                $errText = implode('; ', $errors);
+                if ($flashMessage) {
+                    $flashMessage['text'] .= " Errors: $errText";
+                    $flashMessage['type'] = 'error';
+                } else {
+                    $flashMessage = ['type' => 'error', 'text' => $errText];
+                }
+            }
+        }
+
+        $_SESSION['flash'] = $flashMessage;
+        header('Location: /nagcfg/?view=backups');
+        exit;
     }
 
     // Regenerate CSRF token after POST
@@ -1034,6 +1152,136 @@ function cascadeRename(
 }
 
 /**
+ * Cascade a delete: remove dependent objects and clean up references.
+ * Re-parses fresh before each operation to handle shifted line numbers.
+ * Returns a summary array ['deleted' => int, 'cleaned' => int].
+ */
+function cascadeDelete(
+    array $config,
+    NagiosWriter $writer,
+    string $sourceType,
+    string $deletedName
+): array {
+    $refMap = getRenameReferenceMap();
+    if (!isset($refMap[$sourceType])) return ['deleted' => 0, 'cleaned' => 0];
+
+    $deleted = 0;
+    $cleaned = 0;
+
+    // Helper: check if a directive value references the deleted name
+    $matchesRef = function(string $val, $mode) use ($deletedName): bool {
+        if ($mode === true) {
+            $parts = array_map('trim', explode(',', $val));
+            return in_array($deletedName, $parts, true);
+        } elseif ($mode === false) {
+            return $val === $deletedName;
+        } elseif ($mode === 'command') {
+            return explode('!', $val, 2)[0] === $deletedName;
+        } elseif ($mode === 'command_csv') {
+            foreach (array_map('trim', explode(',', $val)) as $cmd) {
+                if (explode('!', $cmd, 2)[0] === $deletedName) return true;
+            }
+        } elseif ($mode === 'svcgroup_members') {
+            $parts = array_map('trim', explode(',', $val));
+            for ($pi = 0; $pi < count($parts); $pi += 2) {
+                if ($parts[$pi] === $deletedName) return true;
+            }
+        }
+        return false;
+    };
+
+    // Phase 1: Delete dependent objects in a loop (re-parse each time)
+    $found = true;
+    while ($found) {
+        $found = false;
+        $parser_tmp = new NagiosParser($config);
+        $parser_tmp->parse();
+
+        foreach ($refMap[$sourceType] as [$targetType, $directive, $mode]) {
+            foreach ($parser_tmp->getObjects() as $obj) {
+                if ($obj['type'] !== $targetType) continue;
+                $val = $obj['directives'][$directive] ?? null;
+                if ($val === null || $val === '') continue;
+                if (!$matchesRef($val, $mode)) continue;
+
+                // Should this object be fully deleted?
+                $shouldDelete = false;
+                if ($mode === false) {
+                    $shouldDelete = true;
+                } elseif ($mode === true) {
+                    $remaining = array_filter(array_map('trim', explode(',', $val)), fn($p) => $p !== $deletedName);
+                    if (empty($remaining)) $shouldDelete = true;
+                }
+                if ($targetType === 'service' && $directive === 'host_name') {
+                    $remaining = array_filter(array_map('trim', explode(',', $val)), fn($p) => $p !== $deletedName);
+                    if (empty($remaining)) $shouldDelete = true;
+                }
+
+                if ($shouldDelete) {
+                    clearstatcache(true, $obj['file']);
+                    $dr = $writer->deleteObject($obj['file'], $obj['line_start'], $obj['line_end'], filemtime($obj['file']));
+                    if ($dr['success']) $deleted++;
+                    $found = true;
+                    break 2; // restart outer loop with fresh parse
+                }
+            }
+        }
+    }
+
+    // Phase 2: Clean references in a loop (re-parse each time)
+    $found = true;
+    while ($found) {
+        $found = false;
+        $parser_tmp = new NagiosParser($config);
+        $parser_tmp->parse();
+
+        foreach ($refMap[$sourceType] as [$targetType, $directive, $mode]) {
+            foreach ($parser_tmp->getObjects() as $obj) {
+                if ($obj['type'] !== $targetType) continue;
+                $val = $obj['directives'][$directive] ?? null;
+                if ($val === null || $val === '') continue;
+                if (!$matchesRef($val, $mode)) continue;
+
+                // Remove the name from the list
+                $dirs = $obj['directives'];
+                if ($mode === true) {
+                    $parts = array_filter(array_map('trim', explode(',', $val)), fn($p) => $p !== $deletedName);
+                    $newVal = implode(',', $parts);
+                } elseif ($mode === 'svcgroup_members') {
+                    $parts = array_map('trim', explode(',', $val));
+                    $newParts = [];
+                    for ($pi = 0; $pi < count($parts); $pi += 2) {
+                        if ($parts[$pi] !== $deletedName) {
+                            $newParts[] = $parts[$pi];
+                            if (isset($parts[$pi + 1])) $newParts[] = $parts[$pi + 1];
+                        }
+                    }
+                    $newVal = implode(',', $newParts);
+                } elseif ($mode === 'command_csv') {
+                    $cmds = array_filter(array_map('trim', explode(',', $val)), function($cmd) use ($deletedName) {
+                        return explode('!', $cmd, 2)[0] !== $deletedName;
+                    });
+                    $newVal = implode(',', $cmds);
+                } else {
+                    continue;
+                }
+
+                if ($newVal !== $val) {
+                    $dirs[$directive] = $newVal;
+                    clearstatcache(true, $obj['file']);
+                    $wr = $writer->saveObject($obj['file'], $obj['line_start'], $obj['line_end'], $obj['type'], $dirs, filemtime($obj['file']));
+                    if ($wr['success']) $cleaned++;
+                    $found = true;
+                    break 2; // restart with fresh parse
+                }
+            }
+        }
+    }
+
+    return ['deleted' => $deleted, 'cleaned' => $cleaned];
+}
+
+/**
  * Activate nagcfg template on all root templates that don't have it yet.
  * Returns the number of templates activated.
  */
@@ -1209,6 +1457,7 @@ function buildRefData(NagiosParser $parser): array
             <nav>
                 <a href="/nagcfg/"<?= activeClass($view, 'dashboard') ?>>Dashboard</a>
                 <a href="/nagcfg/?view=files"<?= activeClass($view, 'files') ?>>Files</a>
+                <a href="/nagcfg/?view=backups"<?= activeClass($view, 'backups') ?>>Backups</a>
                 <a href="/nagcfg/?view=validate"<?= activeClass($view, 'validate') ?>>Validate</a>
                 <a href="/nagcfg/?view=settings"<?= activeClass($view, 'settings') ?>>Settings</a>
             </nav>
@@ -2054,6 +2303,85 @@ elseif ($view === 'settings'):
                 </tbody>
             </table>
         </details>
+        <?php endif; ?>
+
+<?php
+// ── Backups View ────────────────────────────────────────────────────────
+elseif ($view === 'backups'):
+    $backupDir = rtrim($config['backup_dir'], '/');
+    $transactions = [];
+    if (is_dir($backupDir)) {
+        $scan = scandir($backupDir);
+        foreach ($scan as $entry) {
+            if ($entry === '.' || $entry === '..') continue;
+            if (!str_ends_with($entry, '.bak')) continue;
+            $fullPath = $backupDir . '/' . $entry;
+            // New format: name.cfg_2026-05-17_15-44-06_a1b2c3d4.bak
+            if (preg_match('/^(.+?)_(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})_([a-f0-9]+)\.bak$/', $entry, $m)) {
+                $txId = $m[6];
+                $dateStr = $m[2] . ' ' . $m[3] . ':' . $m[4] . ':' . $m[5];
+                $transactions[$txId]['date'] = $dateStr;
+                $transactions[$txId]['timestamp'] = strtotime($dateStr);
+                $transactions[$txId]['files'][] = [
+                    'origName' => $m[1],
+                    'file' => $fullPath,
+                    'size' => filesize($fullPath),
+                ];
+            }
+            // Old format (no tx ID): name.cfg_2026-05-17_15-44-06.bak
+            elseif (preg_match('/^(.+?)_(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})\.bak$/', $entry, $m)) {
+                $txId = 'legacy_' . $entry;
+                $dateStr = $m[2] . ' ' . $m[3] . ':' . $m[4] . ':' . $m[5];
+                $transactions[$txId]['date'] = $dateStr;
+                $transactions[$txId]['timestamp'] = strtotime($dateStr);
+                $transactions[$txId]['files'][] = [
+                    'origName' => $m[1],
+                    'file' => $fullPath,
+                    'size' => filesize($fullPath),
+                ];
+            }
+        }
+    }
+    // Sort transactions by timestamp descending (newest first)
+    uasort($transactions, fn($a, $b) => $b['timestamp'] - $a['timestamp']);
+?>
+        <h2>Backups</h2>
+
+        <?php if (empty($transactions)): ?>
+            <p>No backups found in <code><?= h($backupDir) ?></code>.</p>
+        <?php else: ?>
+            <table class="obj-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Files</th>
+                        <th>Total Size</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($transactions as $txId => $tx):
+                    $fileNames = array_map(fn($f) => $f['origName'], $tx['files']);
+                    $totalSize = array_sum(array_map(fn($f) => $f['size'], $tx['files']));
+                    $filePaths = array_map(fn($f) => $f['file'], $tx['files']);
+                ?>
+                    <tr>
+                        <td><?= h(date('d.m.Y H:i:s', $tx['timestamp'])) ?></td>
+                        <td><?= h(implode(', ', $fileNames)) ?></td>
+                        <td><?= number_format($totalSize / 1024, 1) ?> KB</td>
+                        <td>
+                            <form method="post" action="/nagcfg/?action=restore" style="display:inline">
+                                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token'] ?? '') ?>">
+                                <?php foreach ($filePaths as $fp): ?>
+                                    <input type="hidden" name="backup_files[]" value="<?= h($fp) ?>">
+                                <?php endforeach; ?>
+                                <button type="submit" class="btn btn-small" onclick="return confirm('Restore <?= h(implode(', ', $fileNames)) ?> from <?= h(date('d.m.Y H:i:s', $tx['timestamp'])) ?>?\nCurrent files will be backed up first.')">Restore</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         <?php endif; ?>
 
 <?php

@@ -3,10 +3,17 @@
 class NagiosWriter
 {
     private array $config;
+    private string $transactionId = '';
+    private array $backedUpFiles = [];
 
     public function __construct(array $config)
     {
         $this->config = $config;
+    }
+
+    public function setTransactionId(string $id): void
+    {
+        $this->transactionId = $id;
     }
 
     /**
@@ -244,8 +251,14 @@ class NagiosWriter
     /**
      * Create a backup of a file.
      */
-    private function backup(string $file): array
+    public function backup(string $file): array
     {
+        // Skip if already backed up in this transaction
+        $realFile = realpath($file);
+        if ($realFile && $this->transactionId !== '' && in_array($realFile, $this->backedUpFiles, true)) {
+            return ['success' => true, 'message' => 'Already backed up in this transaction.'];
+        }
+
         $backupDir = rtrim($this->config['backup_dir'], '/');
 
         if (!is_dir($backupDir)) {
@@ -260,10 +273,15 @@ class NagiosWriter
 
         $basename = basename($file);
         $timestamp = date('Y-m-d_H-i-s');
-        $backupFile = "$backupDir/{$basename}_{$timestamp}.bak";
+        $txSuffix = $this->transactionId !== '' ? '_' . $this->transactionId : '';
+        $backupFile = "$backupDir/{$basename}_{$timestamp}{$txSuffix}.bak";
 
         if (!@copy($file, $backupFile)) {
             return ['success' => false, 'message' => 'Could not create backup:' . $backupFile];
+        }
+
+        if ($realFile) {
+            $this->backedUpFiles[] = $realFile;
         }
 
         $this->rotateBackups($backupDir);
@@ -284,8 +302,8 @@ class NagiosWriter
         if ($files === false) return;
 
         foreach ($files as $f) {
-            // Extract original name: name.cfg_2024-01-01_12-00-00.bak → name.cfg
-            if (preg_match('/^(.+\.cfg)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.bak$/', basename($f), $m)) {
+            // Extract original name: name.cfg_2024-01-01_12-00-00[_txid].bak → name.cfg
+            if (preg_match('/^(.+\.cfg)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_[a-f0-9]+)?\.bak$/', basename($f), $m)) {
                 $groups[$m[1]][] = $f;
             }
         }
