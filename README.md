@@ -1,6 +1,10 @@
 # NagCFG
 
-Web-based configuration editor for Nagios Core 4.x. Edit, create and delete Nagios objects directly in the browser.
+Web-based configuration editor for Nagios Core 4.x. Edit, create and delete Nagios objects directly in the browser. Optionally adds a gear icon to every host and service in the Nagios web interface that links directly to the editor.
+
+![Dashboard](screenshots/dashboard.png)
+
+[More screenshots](#screenshots)
 
 ## Features
 
@@ -12,7 +16,7 @@ Web-based configuration editor for Nagios Core 4.x. Edit, create and delete Nagi
 - Cascading rename: changing a name automatically updates all references across all config files
 - Duplicate detection on rename
 - Atomic writes with automatic backup
-- action_url integration: adds a clickable icon to every host and service in the Nagios web interface that links directly to the editor
+- **[action_url integration: adds a clickable icon to every host and service in the Nagios web interface that links directly to the editor](#action_url-integration)**
 - Read-only mode via configuration
 - CSRF protection
 
@@ -67,6 +71,8 @@ Require valid-user
 
 The settings page (`/nagcfg/?view=settings`) lets you activate the action_url integration. This creates two invisible templates (`nagcfg-host` and `nagcfg-service`) and applies them to all existing host and service templates. A gear icon then appears next to every host and service in the Nagios web interface, linking directly to the editor for that object.
 
+![action_url icon in Nagios](screenshots/action.png)
+
 The integration can be uninstalled from the same settings page.
 
 ## Files
@@ -81,6 +87,16 @@ The integration can be uninstalled from the same settings page.
 | `script.js` | Client-side JavaScript |
 | `action-gear.gif` | Icon for the action_url integration |
 | `.htaccess` | Apache authentication |
+
+## Screenshots
+
+![Edit view](screenshots/host.png)
+
+![Config files](screenshots/files.png)
+
+![Settings](screenshots/settings.png)
+
+![Validation](screenshots/validate.png)
 
 ## Notes
 
