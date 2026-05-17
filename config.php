@@ -6,4 +6,5 @@ return [
     'backup_dir'  => '/usr/local/nagios/etc/backup/',
     'max_backups' => 10,
     'readonly'    => false,
+    'timezone'    => 'Europe/Berlin',
 ];

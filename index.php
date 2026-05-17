@@ -2345,7 +2345,7 @@ elseif ($view === 'backups'):
     // Sort transactions by timestamp descending (newest first)
     uasort($transactions, fn($a, $b) => $b['timestamp'] - $a['timestamp']);
 ?>
-        <h2>Backups</h2>
+        <h2>Backups <span class="count">(created automatically before every save, delete, create and restore)</span></h2>
 
         <?php if (empty($transactions)): ?>
             <p>No backups found in <code><?= h($backupDir) ?></code>.</p>
