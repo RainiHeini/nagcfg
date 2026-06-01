@@ -2182,7 +2182,11 @@ elseif ($view === 'edit'):
                 ),
                 fn($v) => $v !== null
             )) ?>,
-            refData: <?= json_encode($refData) ?>
+            refData: <?= json_encode($refData) ?>,
+            keyField: <?= json_encode(NagiosParser::getKeyField($type)) ?>,
+            existingServices: <?= $type === 'service' ? json_encode(array_values(array_map(fn($s) => ($s['directives']['host_name'] ?? '') . '/' . ($s['directives']['service_description'] ?? ''), array_filter($parser->getObjectsByType('service'), fn($s) => !$parser->isTemplate($s))))) : '[]' ?>,
+            originalName: <?= json_encode($parser->getDisplayName($obj)) ?>,
+            originalSvcKey: <?= $type === 'service' ? json_encode(($obj['directives']['host_name'] ?? '') . '/' . ($obj['directives']['service_description'] ?? '')) : '""' ?>
         };
         </script>
 <?php
@@ -2392,7 +2396,9 @@ elseif ($view === 'new'):
                 ),
                 fn($v) => $v !== null
             )) ?>,
-            refData: <?= json_encode($refData) ?>
+            refData: <?= json_encode($refData) ?>,
+            keyField: <?= json_encode(NagiosParser::getKeyField($type)) ?>,
+            existingServices: <?= $type === 'service' ? json_encode(array_values(array_map(fn($s) => ($s['directives']['host_name'] ?? '') . '/' . ($s['directives']['service_description'] ?? ''), array_filter($parser->getObjectsByType('service'), fn($s) => !$parser->isTemplate($s))))) : '[]' ?>
         };
 
         // Template selection: auto-set 'use' directive

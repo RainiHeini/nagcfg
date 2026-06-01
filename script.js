@@ -194,6 +194,69 @@
         }
     }
 
+    /* ── Duplicate Name Warning on Submit ─────────────────────────── */
+    var editForm = document.getElementById('edit-form');
+    if (editForm) {
+        editForm.addEventListener('submit', function (e) {
+            if (typeof NagCFG === 'undefined' || !NagCFG.refData) return;
+
+            var type = NagCFG.objectType;
+            var keyField = NagCFG.keyField;
+            if (!keyField && type !== 'service') return;
+
+            var isCreate = editForm.action.indexOf('action=create') !== -1;
+
+            // Collect form directive keys and values
+            var keys = editForm.querySelectorAll('input[name="keys[]"]');
+            var vals = editForm.querySelectorAll('input[name="values[]"]');
+            var nameValue = '';
+            var svcHost = '';
+            var svcDesc = '';
+
+            for (var i = 0; i < keys.length; i++) {
+                var k = keys[i].value.trim();
+                var v = (vals[i] ? vals[i].value : '').trim();
+                if (type === 'service') {
+                    if (k === 'host_name') svcHost = v;
+                    if (k === 'service_description') svcDesc = v;
+                } else if (k === keyField) {
+                    nameValue = v;
+                }
+            }
+
+            // Check for existing names
+            var existing = NagCFG.refData[type] || [];
+            var duplicate = false;
+
+            if (type === 'service') {
+                if (svcHost && svcDesc) {
+                    var svcExisting = NagCFG.existingServices || [];
+                    duplicate = svcExisting.indexOf(svcHost + '/' + svcDesc) !== -1;
+                }
+            } else if (nameValue) {
+                duplicate = existing.indexOf(nameValue) !== -1;
+            }
+
+            // On edit: only warn if the name was changed to an existing one
+            if (!isCreate && duplicate) {
+                var origName = NagCFG.originalName || '';
+                if (type === 'service') {
+                    var origSvcKey = NagCFG.originalSvcKey || '';
+                    if (svcHost + '/' + svcDesc === origSvcKey) duplicate = false;
+                } else {
+                    if (nameValue === origName) duplicate = false;
+                }
+            }
+
+            if (duplicate) {
+                var displayName = type === 'service' ? svcHost + ' / ' + svcDesc : nameValue;
+                if (!confirm('Warning: "' + displayName + '" already exists. Continue anyway?')) {
+                    e.preventDefault();
+                }
+            }
+        });
+    }
+
     /* ── Auto-assign datalist when directive name changes ──────────── */
     document.addEventListener('change', function (e) {
         if (e.target.classList.contains('input-key') && !e.target.hasAttribute('readonly')) {
