@@ -11,7 +11,8 @@ Web-based configuration editor for Nagios Core 4.x. Edit, create and delete Nagi
 - Dashboard with overview of all object types and counts
 - List and detail views for all Nagios object types (hosts, services, hostgroups, contacts, commands, timeperiods, etc.)
 - Inline editing with autocompletion for directives and cross-references
-- Create, copy and delete objects
+- Create, copy and delete objects (copying a host can include its services and hostgroup membership)
+- Hostgroup and servicegroup membership management directly from the edit page
 - Automatic validation (`nagios -v`) and reload after every change
 - Cascading rename: changing a name automatically updates all references across all config files
 - Duplicate detection on rename

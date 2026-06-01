@@ -223,16 +223,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $result = $writer->appendObject($targetFile, $postType, $directives);
                 if ($result['success']) {
                     $flashMessage = ['type' => 'success', 'text' => 'Object created.'];
-                    // Redirect to edit view
+
+                    // Copy services from original host
+                    $copyServicesFrom = $_POST['copy_services_from'] ?? '';
+                    $copyServices = !empty($_POST['copy_services']);
+                    if ($postType === 'host' && $copyServices && $copyServicesFrom !== '' && !empty($directives['host_name'])) {
+                        $newHostName = $directives['host_name'];
+                        $parser_tmp = new NagiosParser($config);
+                        $parser_tmp->parse();
+                        $copiedCount = 0;
+                        foreach ($parser_tmp->getObjectsByType('service') as $svc) {
+                            $svcHosts = array_map('trim', explode(',', $svc['directives']['host_name'] ?? ''));
+                            if (in_array($copyServicesFrom, $svcHosts, true)) {
+                                $svcDirectives = $svc['directives'];
+                                $svcDirectives['host_name'] = $newHostName;
+                                $svcResult = $writer->appendObject($targetFile, 'service', $svcDirectives);
+                                if ($svcResult['success']) $copiedCount++;
+                            }
+                        }
+                        if ($copiedCount > 0) {
+                            $flashMessage['text'] .= " $copiedCount service" . ($copiedCount > 1 ? 's' : '') . ' copied.';
+                        }
+                    }
+
+                    // Add new host to hostgroup
+                    $addToHostgroup = $_POST['add_to_hostgroup'] ?? '';
+                    if ($postType === 'host' && $addToHostgroup !== '' && !empty($directives['host_name'])) {
+                        $parser_hg = new NagiosParser($config);
+                        $parser_hg->parse();
+                        $hgObj = $parser_hg->findObject('hostgroup', $addToHostgroup);
+                        if ($hgObj) {
+                            $hgDirectives = $hgObj['directives'];
+                            $members = $hgDirectives['members'] ?? '';
+                            $hgDirectives['members'] = $members !== '' ? $members . ',' . $directives['host_name'] : $directives['host_name'];
+                            clearstatcache(true, $hgObj['file']);
+                            $hgResult = $writer->saveObject($hgObj['file'], $hgObj['line_start'], $hgObj['line_end'], 'hostgroup', $hgDirectives, filemtime($hgObj['file']));
+                            if ($hgResult['success']) {
+                                $flashMessage['text'] .= ' Added to hostgroup ' . $addToHostgroup . '.';
+                            }
+                        }
+                    }
+
+                    // Validate and auto-reload Nagios
+                    $output = [];
+                    $returnCode = 0;
+                    exec($config['nagios_bin'] . ' -v ' . escapeshellarg($config['nagios_cfg']) . ' 2>&1', $output, $returnCode);
+                    if ($returnCode === 0) {
+                        $reload = $writer->reloadNagios();
+                        if ($reload['success']) {
+                            $flashMessage['text'] .= ' Nagios reloaded.';
+                        }
+                    } else {
+                        $flashMessage['text'] .= ' Warning: Nagios was NOT reloaded (validation error).';
+                        $flashMessage['type'] = 'warning';
+                        $flashMessage['details'] = implode("\n", $output);
+                    }
+
+                    // PRG redirect to edit view
+                    $_SESSION['flash'] = $flashMessage;
                     $keyField = NagiosParser::getKeyField($postType);
                     if ($postType === 'service' && isset($directives['host_name'], $directives['service_description'])) {
-                        header('Location: /nagcfg/?view=edit&type=service&host=' . urlencode($directives['host_name']) . '&desc=' . urlencode($directives['service_description']) . '&saved=1');
+                        header('Location: /nagcfg/?view=edit&type=service&host=' . urlencode($directives['host_name']) . '&desc=' . urlencode($directives['service_description']));
                         exit;
                     } elseif ($keyField && isset($directives[$keyField])) {
-                        header('Location: /nagcfg/?view=edit&type=' . urlencode($postType) . '&name=' . urlencode($directives[$keyField]) . '&saved=1');
+                        header('Location: /nagcfg/?view=edit&type=' . urlencode($postType) . '&name=' . urlencode($directives[$keyField]));
                         exit;
                     } elseif (isset($directives['name'])) {
-                        header('Location: /nagcfg/?view=edit&type=' . urlencode($postType) . '&name=' . urlencode($directives['name']) . '&saved=1');
+                        header('Location: /nagcfg/?view=edit&type=' . urlencode($postType) . '&name=' . urlencode($directives['name']));
                         exit;
                     }
                 } else {
@@ -312,6 +369,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flashMessage = $result['success']
                     ? ['type' => 'success', 'text' => 'File saved.']
                     : ['type' => 'error', 'text' => $result['message']];
+            }
+
+        } elseif ($action === 'group_membership') {
+            $groupType = $_POST['group_type'] ?? '';    // hostgroup or servicegroup
+            $groupName = $_POST['group_name'] ?? '';
+            $memberName = $_POST['member_name'] ?? '';   // host_name (for both)
+            $memberName2 = $_POST['member_name2'] ?? ''; // service_description (for servicegroup)
+            $memberOp = $_POST['op'] ?? '';               // add or remove
+            $redirectUrl = $_POST['redirect'] ?? '/nagcfg/';
+
+            $validGroupTypes = ['hostgroup', 'servicegroup'];
+            if (!in_array($groupType, $validGroupTypes, true) || $groupName === '' || $memberName === '') {
+                $flashMessage = ['type' => 'error', 'text' => 'Invalid parameters.'];
+            } else {
+                $parser_tmp = new NagiosParser($config);
+                $parser_tmp->parse();
+                $groupObj = $parser_tmp->findObject($groupType, $groupName);
+                if (!$groupObj) {
+                    $flashMessage = ['type' => 'error', 'text' => ucfirst($groupType) . ' not found: ' . $groupName];
+                } else {
+                    $groupDirectives = $groupObj['directives'];
+                    $members = array_filter(array_map('trim', explode(',', $groupDirectives['members'] ?? '')));
+
+                    if ($groupType === 'servicegroup') {
+                        // Servicegroup members are pairs: host1,svc1,host2,svc2,...
+                        if ($memberOp === 'add') {
+                            // Check if pair already exists
+                            $found = false;
+                            for ($mi = 0; $mi + 1 < count($members); $mi += 2) {
+                                if ($members[$mi] === $memberName && $members[$mi + 1] === $memberName2) { $found = true; break; }
+                            }
+                            if (!$found) {
+                                $members[] = $memberName;
+                                $members[] = $memberName2;
+                            }
+                        } elseif ($memberOp === 'remove') {
+                            $newMembers = [];
+                            for ($mi = 0; $mi + 1 < count($members); $mi += 2) {
+                                if ($members[$mi] === $memberName && $members[$mi + 1] === $memberName2) continue;
+                                $newMembers[] = $members[$mi];
+                                $newMembers[] = $members[$mi + 1];
+                            }
+                            $members = $newMembers;
+                        }
+                    } else {
+                        // Hostgroup members are simple: host1,host2,...
+                        if ($memberOp === 'add') {
+                            if (!in_array($memberName, $members, true)) {
+                                $members[] = $memberName;
+                            }
+                        } elseif ($memberOp === 'remove') {
+                            $members = array_values(array_filter($members, fn($m) => $m !== $memberName));
+                        }
+                    }
+
+                    $groupDirectives['members'] = implode(',', $members);
+                    clearstatcache(true, $groupObj['file']);
+                    $result = $writer->saveObject($groupObj['file'], $groupObj['line_start'], $groupObj['line_end'], $groupType, $groupDirectives, filemtime($groupObj['file']));
+                    if ($result['success']) {
+                        $opText = $memberOp === 'add' ? 'Added to' : 'Removed from';
+                        $flashMessage = ['type' => 'success', 'text' => "$opText $groupType $groupName."];
+
+                        // Validate and auto-reload
+                        $output = [];
+                        $returnCode = 0;
+                        exec($config['nagios_bin'] . ' -v ' . escapeshellarg($config['nagios_cfg']) . ' 2>&1', $output, $returnCode);
+                        if ($returnCode === 0) {
+                            $reload = $writer->reloadNagios();
+                            if ($reload['success']) {
+                                $flashMessage['text'] .= ' Nagios reloaded.';
+                            }
+                        } else {
+                            $flashMessage['text'] .= ' Warning: Nagios was NOT reloaded (validation error).';
+                            $flashMessage['type'] = 'warning';
+                        }
+                    } else {
+                        $flashMessage = ['type' => 'error', 'text' => $result['message']];
+                    }
+                }
+                $_SESSION['flash'] = $flashMessage;
+                header('Location: ' . $redirectUrl);
+                exit;
             }
 
         } elseif ($action === 'reload') {
@@ -1626,17 +1765,85 @@ elseif ($view === 'edit'):
         $refData = buildRefData($parser);
         $knownDirectives = directivesForType($type);
 
-        // Related services (for hosts)
+        // Related hostgroups and services (for hosts)
+        $relatedHostgroups = [];
+        $allHostgroups = [];
         $relatedServices = [];
+        // Related servicegroups (for services)
+        $relatedServicegroups = [];
+        $allServicegroups = [];
+
         if ($type === 'host') {
             $hostName = $obj['directives']['host_name'] ?? '';
+            // Collect all hostgroups for dropdown
+            foreach ($parser->getObjectsByType('hostgroup') as $hg) {
+                $hgName = $hg['directives']['hostgroup_name'] ?? '';
+                if ($hgName !== '') $allHostgroups[] = $hgName;
+            }
+            sort($allHostgroups);
+
             if ($hostName !== '') {
+                // Find hostgroups via host's hostgroups directive
+                if (!empty($obj['directives']['hostgroups'])) {
+                    foreach (array_map('trim', explode(',', $obj['directives']['hostgroups'])) as $hgName) {
+                        $hgObj = $parser->findObject('hostgroup', $hgName);
+                        if ($hgObj) $relatedHostgroups[] = $hgObj;
+                    }
+                }
+                // Find hostgroups via members directive
+                foreach ($parser->getObjectsByType('hostgroup') as $hg) {
+                    $hgName = $hg['directives']['hostgroup_name'] ?? '';
+                    $members = array_map('trim', explode(',', $hg['directives']['members'] ?? ''));
+                    if (in_array($hostName, $members, true)) {
+                        $already = false;
+                        foreach ($relatedHostgroups as $existing) {
+                            if (($existing['directives']['hostgroup_name'] ?? '') === $hgName) { $already = true; break; }
+                        }
+                        if (!$already) $relatedHostgroups[] = $hg;
+                    }
+                }
+
                 foreach ($parser->getObjectsByType('service') as $svc) {
                     $svcHost = $svc['directives']['host_name'] ?? '';
-                    // host_name can be comma-separated
                     $svcHosts = array_map('trim', explode(',', $svcHost));
                     if (in_array($hostName, $svcHosts, true)) {
                         $relatedServices[] = $svc;
+                    }
+                }
+            }
+        } elseif ($type === 'service') {
+            $svcHostName = $obj['directives']['host_name'] ?? '';
+            $svcDesc = $obj['directives']['service_description'] ?? '';
+            $svcKey = $svcHostName . ',' . $svcDesc;
+            // Collect all servicegroups for dropdown
+            foreach ($parser->getObjectsByType('servicegroup') as $sg) {
+                $sgName = $sg['directives']['servicegroup_name'] ?? '';
+                if ($sgName !== '') $allServicegroups[] = $sgName;
+            }
+            sort($allServicegroups);
+
+            if ($svcHostName !== '' && $svcDesc !== '') {
+                // Find servicegroups via servicegroups directive on the service
+                if (!empty($obj['directives']['servicegroups'])) {
+                    foreach (array_map('trim', explode(',', $obj['directives']['servicegroups'])) as $sgName) {
+                        $sgObj = $parser->findObject('servicegroup', $sgName);
+                        if ($sgObj) $relatedServicegroups[] = $sgObj;
+                    }
+                }
+                // Find servicegroups via members directive (host1,svc1,host2,svc2,...)
+                foreach ($parser->getObjectsByType('servicegroup') as $sg) {
+                    $sgName = $sg['directives']['servicegroup_name'] ?? '';
+                    $sgMembers = array_map('trim', explode(',', $sg['directives']['members'] ?? ''));
+                    // members is pairs: host_name,service_description,host_name,service_description,...
+                    for ($mi = 0; $mi + 1 < count($sgMembers); $mi += 2) {
+                        if ($sgMembers[$mi] === $svcHostName && $sgMembers[$mi + 1] === $svcDesc) {
+                            $already = false;
+                            foreach ($relatedServicegroups as $existing) {
+                                if (($existing['directives']['servicegroup_name'] ?? '') === $sgName) { $already = true; break; }
+                            }
+                            if (!$already) $relatedServicegroups[] = $sg;
+                            break;
+                        }
                     }
                 }
             }
@@ -1776,7 +1983,7 @@ elseif ($view === 'edit'):
                 <button type="submit" name="action" value="save" class="btn btn-primary">Save</button>
                 <?php endif; ?>
                 <a href="/nagcfg/?view=list&type=<?= h($type) ?>" class="btn">Cancel</a>
-                <a href="/nagcfg/?view=new&type=<?= h($type) ?>&copy_file=<?= urlencode($obj['file']) ?>&copy_line=<?= $obj['line_start'] ?>" class="btn" style="margin-left:auto">Copy</a>
+                <a href="/nagcfg/?view=new&amp;type=<?= h($type) ?>&amp;from_file=<?= urlencode($obj['file']) ?>&amp;from_line=<?= $obj['line_start'] ?>" class="btn" style="margin-left:auto">Copy</a>
             </div>
         </form>
 
@@ -1808,6 +2015,68 @@ elseif ($view === 'edit'):
             <pre class="raw-block"><?= h($obj['raw']) ?></pre>
         </details>
 
+        <?php if ($type === 'host'):
+            $currentEditUrl = '/nagcfg/?view=edit&type=host&name=' . urlencode($obj['directives']['host_name'] ?? '');
+            $unusedHostgroups = array_filter($allHostgroups, fn($hg) => !in_array($hg, array_map(fn($h) => $h['directives']['hostgroup_name'] ?? '', $relatedHostgroups), true));
+        ?>
+        <div class="related-section">
+            <h3>Hostgroups <span class="count">(<?= count($relatedHostgroups) ?>)</span></h3>
+            <?php if (count($relatedHostgroups) > 0): ?>
+            <table class="obj-table">
+                <thead>
+                    <tr>
+                        <th>Hostgroup</th>
+                        <th>Alias</th>
+                        <th>Members</th>
+                        <?php if (!$config['readonly']): ?><th></th><?php endif; ?>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($relatedHostgroups as $hg):
+                    $hgName = $hg['directives']['hostgroup_name'] ?? '?';
+                    $hgAlias = $hg['directives']['alias'] ?? '';
+                    $hgMembers = count(array_filter(array_map('trim', explode(',', $hg['directives']['members'] ?? ''))));
+                ?>
+                    <tr>
+                        <td><a href="/nagcfg/?view=edit&amp;type=hostgroup&amp;name=<?= urlencode($hgName) ?>"><?= h($hgName) ?></a></td>
+                        <td><?= h($hgAlias) ?></td>
+                        <td><?= $hgMembers ?></td>
+                        <?php if (!$config['readonly']): ?>
+                        <td>
+                            <form method="post" action="/nagcfg/?action=group_membership" style="display:inline">
+                                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+                                <input type="hidden" name="group_type" value="hostgroup">
+                                <input type="hidden" name="group_name" value="<?= h($hgName) ?>">
+                                <input type="hidden" name="member_name" value="<?= h($obj['directives']['host_name'] ?? '') ?>">
+                                <input type="hidden" name="op" value="remove">
+                                <input type="hidden" name="redirect" value="<?= h($currentEditUrl) ?>">
+                                <button type="submit" class="btn-remove" title="Remove from hostgroup">&times;</button>
+                            </form>
+                        </td>
+                        <?php endif; ?>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+            <?php if (!$config['readonly'] && count($unusedHostgroups) > 0): ?>
+            <form method="post" action="/nagcfg/?action=group_membership" style="margin-top:6px;display:flex;gap:6px;align-items:center">
+                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+                <input type="hidden" name="group_type" value="hostgroup">
+                <input type="hidden" name="member_name" value="<?= h($obj['directives']['host_name'] ?? '') ?>">
+                <input type="hidden" name="op" value="add">
+                <input type="hidden" name="redirect" value="<?= h($currentEditUrl) ?>">
+                <select name="group_name" class="search-input" style="width:auto">
+                    <?php foreach ($unusedHostgroups as $hg): ?>
+                    <option value="<?= h($hg) ?>"><?= h($hg) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" class="btn btn-small">Add to hostgroup</button>
+            </form>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
         <?php if ($type === 'host' && count($relatedServices) > 0): ?>
         <div class="related-section">
             <h3>Related Services <span class="count">(<?= count($relatedServices) ?>)</span></h3>
@@ -1836,6 +2105,69 @@ elseif ($view === 'edit'):
                 <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($type === 'service'):
+            $svcHostName = $obj['directives']['host_name'] ?? '';
+            $svcDesc = $obj['directives']['service_description'] ?? '';
+            $currentSvcUrl = '/nagcfg/?view=edit&type=service&host=' . urlencode($svcHostName) . '&desc=' . urlencode($svcDesc);
+            $unusedServicegroups = array_filter($allServicegroups, fn($sg) => !in_array($sg, array_map(fn($s) => $s['directives']['servicegroup_name'] ?? '', $relatedServicegroups), true));
+        ?>
+        <div class="related-section">
+            <h3>Servicegroups <span class="count">(<?= count($relatedServicegroups) ?>)</span></h3>
+            <?php if (count($relatedServicegroups) > 0): ?>
+            <table class="obj-table">
+                <thead>
+                    <tr>
+                        <th>Servicegroup</th>
+                        <th>Alias</th>
+                        <?php if (!$config['readonly']): ?><th></th><?php endif; ?>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($relatedServicegroups as $sg):
+                    $sgName = $sg['directives']['servicegroup_name'] ?? '?';
+                    $sgAlias = $sg['directives']['alias'] ?? '';
+                ?>
+                    <tr>
+                        <td><a href="/nagcfg/?view=edit&amp;type=servicegroup&amp;name=<?= urlencode($sgName) ?>"><?= h($sgName) ?></a></td>
+                        <td><?= h($sgAlias) ?></td>
+                        <?php if (!$config['readonly']): ?>
+                        <td>
+                            <form method="post" action="/nagcfg/?action=group_membership" style="display:inline">
+                                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+                                <input type="hidden" name="group_type" value="servicegroup">
+                                <input type="hidden" name="group_name" value="<?= h($sgName) ?>">
+                                <input type="hidden" name="member_name" value="<?= h($svcHostName) ?>">
+                                <input type="hidden" name="member_name2" value="<?= h($svcDesc) ?>">
+                                <input type="hidden" name="op" value="remove">
+                                <input type="hidden" name="redirect" value="<?= h($currentSvcUrl) ?>">
+                                <button type="submit" class="btn-remove" title="Remove from servicegroup">&times;</button>
+                            </form>
+                        </td>
+                        <?php endif; ?>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+            <?php if (!$config['readonly'] && count($unusedServicegroups) > 0): ?>
+            <form method="post" action="/nagcfg/?action=group_membership" style="margin-top:6px;display:flex;gap:6px;align-items:center">
+                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+                <input type="hidden" name="group_type" value="servicegroup">
+                <input type="hidden" name="member_name" value="<?= h($svcHostName) ?>">
+                <input type="hidden" name="member_name2" value="<?= h($svcDesc) ?>">
+                <input type="hidden" name="op" value="add">
+                <input type="hidden" name="redirect" value="<?= h($currentSvcUrl) ?>">
+                <select name="group_name" class="search-input" style="width:auto">
+                    <?php foreach ($unusedServicegroups as $sg): ?>
+                    <option value="<?= h($sg) ?>"><?= h($sg) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" class="btn btn-small">Add to servicegroup</button>
+            </form>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
@@ -1876,20 +2208,60 @@ elseif ($view === 'new'):
 
         // Copy mode: prefill from existing object
         $prefill = [];
-        if (isset($_GET['copy_file'], $_GET['copy_line'])) {
-            $copyObj = $parser->findObjectByLocation($_GET['copy_file'], (int)$_GET['copy_line']);
+        $copyFromFile = '';
+        $copyServices = [];
+        $copyHostName = '';
+        if (isset($_GET['from_file'], $_GET['from_line'])) {
+            $copyObj = $parser->findObjectByLocation($_GET['from_file'], (int)$_GET['from_line']);
             if ($copyObj) {
                 $prefill = $copyObj['directives'];
-                // Remove identity fields for the copy
-                $keyField = NagiosParser::getKeyField($type);
-                if ($keyField) unset($prefill[$keyField]);
-                if ($type === 'service') unset($prefill['service_description']);
+                $copyFromFile = $copyObj['file'];
                 unset($prefill['name']); // template name must be unique
+
+                // Find related services when copying a host
+                if ($type === 'host') {
+                    $copyHostName = $copyObj['directives']['host_name'] ?? '';
+                    if ($copyHostName !== '') {
+                        foreach ($parser->getObjectsByType('service') as $svc) {
+                            $svcHosts = array_map('trim', explode(',', $svc['directives']['host_name'] ?? ''));
+                            if (in_array($copyHostName, $svcHosts, true)) {
+                                $copyServices[] = $svc;
+                            }
+                        }
+                    }
+                }
             }
         }
 
         if ($isTemplateMode && !isset($prefill['register'])) {
             $prefill['register'] = '0';
+        }
+
+        // Collect hostgroups for host creation
+        $allHostgroups = [];
+        $preselectedHostgroups = [];
+        if ($type === 'host') {
+            foreach ($parser->getObjectsByType('hostgroup') as $hg) {
+                $hgName = $hg['directives']['hostgroup_name'] ?? '';
+                if ($hgName !== '') $allHostgroups[] = $hgName;
+            }
+            sort($allHostgroups);
+
+            // Find hostgroups of the original host (when copying)
+            if ($copyHostName !== '') {
+                // Check hostgroups directive on the host itself
+                if (!empty($prefill['hostgroups'])) {
+                    $preselectedHostgroups = array_map('trim', explode(',', $prefill['hostgroups']));
+                }
+                // Check members directive on hostgroup objects
+                foreach ($parser->getObjectsByType('hostgroup') as $hg) {
+                    $hgName = $hg['directives']['hostgroup_name'] ?? '';
+                    $members = array_map('trim', explode(',', $hg['directives']['members'] ?? ''));
+                    if (in_array($copyHostName, $members, true) && !in_array($hgName, $preselectedHostgroups, true)) {
+                        $preselectedHostgroups[] = $hgName;
+                    }
+                }
+            }
         }
 
         // Collect datalists
@@ -1938,10 +2310,21 @@ elseif ($view === 'new'):
                     Target file:
                     <select name="target_file" class="search-input" required>
                         <?php foreach ($targetFiles as $path => $name): ?>
-                        <option value="<?= h($path) ?>"><?= h($name) ?></option>
+                        <option value="<?= h($path) ?>"<?= $copyFromFile === $path ? ' selected' : '' ?>><?= h($name) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </label>
+                <?php if ($type === 'host' && !empty($allHostgroups)): ?>
+                <label>
+                    Hostgroup:
+                    <select name="add_to_hostgroup" class="search-input">
+                        <option value="">— None —</option>
+                        <?php foreach ($allHostgroups as $hg): ?>
+                        <option value="<?= h($hg) ?>"<?= in_array($hg, $preselectedHostgroups, true) ? ' selected' : '' ?>><?= h($hg) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <?php endif; ?>
             </div>
 
             <table class="edit-table">
@@ -1970,6 +2353,28 @@ elseif ($view === 'new'):
                     </tr>
                 </tbody>
             </table>
+
+            <?php if (!empty($copyServices)): ?>
+            <div class="alert" style="margin-top:10px">
+                <label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer">
+                    <input type="checkbox" name="copy_services" value="1" checked>
+                    <input type="hidden" name="copy_services_from" value="<?= h($copyHostName) ?>">
+                    Also copy <?= count($copyServices) ?> service<?= count($copyServices) > 1 ? 's' : '' ?> from <strong><?= h($copyHostName) ?></strong>
+                </label>
+                <table class="edit-table" style="margin-top:8px;font-size:13px">
+                    <thead><tr><th>Service</th><th>Check Command</th><th>Template</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($copyServices as $cs): ?>
+                        <tr>
+                            <td><?= h($cs['directives']['service_description'] ?? '?') ?></td>
+                            <td><?= h($cs['directives']['check_command'] ?? '') ?></td>
+                            <td><?= h($cs['directives']['use'] ?? '') ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Create</button>
